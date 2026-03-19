@@ -37,6 +37,34 @@ class TranscriptIntelligenceService:
 
         return max(0, min(100, score)), reasons
 
+    def _refine_window(self, segments: list[dict], index: int) -> tuple[float, float, list[str]]:
+        current = segments[index]
+        start = current["start_time"]
+        end = current["end_time"]
+        reasons = ["starts on spoken boundary"]
+
+        if index > 0:
+            prev = segments[index - 1]
+            if start - prev["end_time"] < 0.8 and len(prev["text"].split()) < 8:
+                start = prev["start_time"]
+                reasons.append("pulled in previous short setup phrase")
+
+        if index + 1 < len(segments):
+            nxt = segments[index + 1]
+            if nxt["start_time"] - end < 0.8 and len(nxt["text"].split()) < 10:
+                end = nxt["end_time"]
+                reasons.append("extended to include complete payoff sentence")
+
+        duration = end - start
+        if duration < 8 and index + 1 < len(segments):
+            end = max(end, segments[index + 1]["end_time"])
+            reasons.append("extended to hit minimum short-form duration")
+        if end - start > 28:
+            end = start + 28
+            reasons.append("trimmed to short-form max duration")
+
+        return round(max(0.0, start), 3), round(end, 3), reasons
+
     def generate_candidates(self, job, transcript_segments: list[dict]) -> list[dict]:
         if not transcript_segments:
             return []
@@ -47,27 +75,38 @@ class TranscriptIntelligenceService:
             if not text:
                 continue
 
-            score, reasons = self._score_text(text, idx)
-            title = text[:72].strip().rstrip('.') or f"Clip {idx + 1}"
-            first_sentence = text.split('.')[0].strip()
-            hook = (first_sentence or text)[:100]
-            duration = max(0.1, segment["end_time"] - segment["start_time"])
-            if duration < 4:
-                score -= 6
+            start_time, end_time, boundary_reasons = self._refine_window(transcript_segments, idx)
+            window_text_parts = [segment["text"]]
+            if start_time < segment["start_time"] and idx > 0:
+                window_text_parts.insert(0, transcript_segments[idx - 1]["text"])
+            if end_time > segment["end_time"] and idx + 1 < len(transcript_segments):
+                window_text_parts.append(transcript_segments[idx + 1]["text"])
+            window_text = " ".join(window_text_parts).strip()
+
+            score, reasons = self._score_text(window_text, idx)
+            title = window_text[:72].strip().rstrip('.') or f"Clip {idx + 1}"
+            first_sentence = window_text.split('.')[0].strip()
+            hook = (first_sentence or window_text)[:100]
+            duration = max(0.1, end_time - start_time)
+            if 10 <= duration <= 24:
+                score += 6
+                reasons.append("duration fits high-retention short-form range")
+            elif duration < 6:
+                score -= 10
                 reasons.append("very short segment")
-            if duration > 35:
-                score -= 8
-                reasons.append("longer than ideal short-form clip")
+            elif duration > 30:
+                score -= 10
+                reasons.append("too long for strongest retention")
 
             candidates.append(
                 {
-                    "start_time": max(0.0, round(segment["start_time"], 3)),
-                    "end_time": round(segment["end_time"], 3),
+                    "start_time": start_time,
+                    "end_time": end_time,
                     "title": title,
                     "hook": hook,
                     "score": max(0, min(100, score)),
-                    "topic_label": "mortgage advice" if "mortgage" in text.lower() else "financial services",
-                    "reasoning_json": reasons + ["derived from actual transcript segment", "starts on spoken boundary"],
+                    "topic_label": "mortgage advice" if "mortgage" in window_text.lower() else "financial services",
+                    "reasoning_json": reasons + boundary_reasons + ["derived from actual transcript segment"],
                     "caption_style": job.style_preset,
                     "broll_prompts_json": [
                         f"cinematic b-roll matching: {hook}",

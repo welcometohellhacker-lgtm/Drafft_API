@@ -14,12 +14,19 @@ const CaptionLayer: React.FC<any> = ({captions, style}) => {
     return frame >= from && frame <= to;
   });
   if (!activeGroup) return null;
+  const from = secToFrame(activeGroup.start_time, fps);
+  const pop = spring({frame: frame - from, fps, config:{damping: 10}});
   return (
     <div style={{position:'absolute', bottom:120, left:56, right:56, display:'flex', justifyContent:'center'}}>
-      <div style={{fontSize:52, fontWeight:900, padding:'18px 24px', borderRadius:28, background:profile.captionBg, textAlign:'center', lineHeight:1.1, boxShadow: profile.accentGlow}}>
-        {activeGroup.words?.map((word: any, idx: number) => (
-          <span key={idx} style={{color: word.text === activeGroup.highlight ? '#00E5A8' : '#FFFFFF', marginRight: 10}}>{word.text}</span>
-        ))}
+      <div style={{fontSize:52, fontWeight:900, padding:'18px 24px', borderRadius:28, background:profile.captionBg, textAlign:'center', lineHeight:1.1, boxShadow: profile.accentGlow, transform:`scale(${0.96 + pop * 0.04})`}}>
+        {activeGroup.words?.map((word: any, idx: number) => {
+          const wf = secToFrame(word.start_time, fps);
+          const wt = secToFrame(word.end_time, fps);
+          const active = frame >= wf && frame <= wt;
+          return (
+            <span key={idx} style={{color: active || word.text === activeGroup.highlight ? '#00E5A8' : '#FFFFFF', marginRight: 10, textShadow: active ? '0 0 20px rgba(0,229,168,.45)' : 'none'}}>{word.text}</span>
+          );
+        })}
       </div>
     </div>
   );
@@ -59,7 +66,7 @@ const BrollLayer: React.FC<any> = ({visuals}) => {
         const from = secToFrame(item.start || 0, fps);
         const to = secToFrame(item.end || 0, fps);
         if (frame < from || frame > to) return null;
-        const scale = interpolate(frame, [from, to], [1, 1.08]);
+        const scale = interpolate(frame, [from, to], [1, item.motion === 'parallax_push' ? 1.12 : 1.06]);
         const opacity = interpolate(frame, [from, from + 8, to - 8, to], [0, 0.44, 0.44, 0]);
         return (
           <AbsoluteFill key={idx} style={{opacity}}>
@@ -69,6 +76,21 @@ const BrollLayer: React.FC<any> = ({visuals}) => {
       })}
     </>
   );
+};
+
+const MotionFX: React.FC<any> = ({visuals}) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const activeZoom = (visuals?.zoomEvents || []).find((z: any) => {
+    const from = secToFrame(z.start || 0, fps);
+    const to = secToFrame(z.end || 0, fps);
+    return frame >= from && frame <= to;
+  });
+  if (!activeZoom) return null;
+  const from = secToFrame(activeZoom.start || 0, fps);
+  const to = secToFrame(activeZoom.end || 0, fps);
+  const zoom = interpolate(frame, [from, to], [1, activeZoom.type === 'hook_punch_in' ? 1.08 : 1.04]);
+  return <AbsoluteFill style={{transform:`scale(${zoom})`, border:'2px solid rgba(255,255,255,0.05)'}} />;
 };
 
 export const VerticalClip: React.FC<any> = (props) => {
@@ -92,8 +114,9 @@ export const VerticalClip: React.FC<any> = (props) => {
         />
       ) : null}
 
-      <AbsoluteFill style={{background:'linear-gradient(180deg, rgba(0,0,0,.1), rgba(0,0,0,.58))'}} />
+      <AbsoluteFill style={{background:'linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.58))'}} />
       <BrollLayer visuals={props.visuals} />
+      <MotionFX visuals={props.visuals} />
 
       <div style={{position:'absolute', top:50, left:50, right:50, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
         <div style={{fontSize:22, letterSpacing:2, opacity:0.88}}>DRAFFT • VIRAL ENGINE</div>
