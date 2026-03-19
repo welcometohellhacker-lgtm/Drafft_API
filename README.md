@@ -31,6 +31,7 @@ Final target: **Version 5**.
 
 ### Version 4 — Audio Enhancement + Narration
 - ElevenLabs provider abstraction
+- voice isolation seam
 - Speech cleanup / isolation seam
 - Narration planning and audio mix seam
 
