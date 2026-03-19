@@ -24,9 +24,9 @@ Final target: **Version 5**.
 - Render listing endpoint
 
 ### Version 3 — B-roll + Visual Planning
-- B-roll prompt generation
-- Visual plan JSON
-- CTA overlays
+- Dedicated B-roll planning artifacts with insertion windows
+- Expanded visual plan JSON with overlays, cuts, and CTA metadata
+- Generated image asset flow for B-roll stills
 - Thumbnail text ideas
 
 ### Version 4 — Audio Enhancement + Narration
