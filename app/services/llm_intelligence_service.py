@@ -6,9 +6,9 @@ from app.core.config import settings
 
 
 class LLMIntelligenceService:
-    """GPT-driven creative planning with OpenAI Responses API and safe fallback."""
+    """GPT-driven creative planning via OpenRouter with safe fallback."""
 
-    MODEL_NAME = "gpt-5.4"
+    MODEL_NAME = "openai/gpt-5"
 
     def _fallback(self, transcript_segments: list[dict], project_brand: dict | None = None) -> dict:
         transcript_text = " ".join(segment.get("text", "") for segment in transcript_segments).lower()
@@ -20,7 +20,7 @@ class LLMIntelligenceService:
             "text": "#FFFFFF" if energetic else "#F8FAFC",
         }
         return {
-            "llm_model": self.MODEL_NAME,
+            "llm_model": settings.openrouter_model or self.MODEL_NAME,
             "provider": "fallback",
             "caption_style": style,
             "font_family": (project_brand or {}).get("font_family", "Inter"),
@@ -38,7 +38,7 @@ class LLMIntelligenceService:
 
     def choose_creative_direction(self, transcript_segments: list[dict], project_brand: dict | None = None) -> dict:
         fallback = self._fallback(transcript_segments, project_brand)
-        if not settings.openai_api_key:
+        if not settings.openrouter_api_key:
             return fallback
 
         prompt = {
@@ -62,58 +62,49 @@ class LLMIntelligenceService:
         try:
             with httpx.Client(timeout=25.0) as client:
                 response = client.post(
-                    "https://api.openai.com/v1/responses",
+                    f"{settings.openrouter_base_url.rstrip('/')}/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {settings.openai_api_key}",
+                        "Authorization": f"Bearer {settings.openrouter_api_key}",
                         "Content-Type": "application/json",
+                        "HTTP-Referer": "https://docs.openclaw.ai",
+                        "X-Title": "Drafft_API",
                     },
                     json={
-                        "model": self.MODEL_NAME,
-                        "input": [
+                        "model": settings.openrouter_model or self.MODEL_NAME,
+                        "messages": [
                             {
                                 "role": "system",
-                                "content": [
-                                    {
-                                        "type": "input_text",
-                                        "text": "You are a creative director for short-form B2B finance video repurposing. Return only valid JSON."
-                                    }
-                                ],
+                                "content": "You are a creative director for short-form B2B finance video repurposing. Return only valid JSON.",
                             },
-                            {
-                                "role": "user",
-                                "content": [{"type": "input_text", "text": json.dumps(prompt)}],
-                            },
+                            {"role": "user", "content": json.dumps(prompt)},
                         ],
+                        "response_format": {"type": "json_object"},
                     },
                 )
                 response.raise_for_status()
                 payload = response.json()
         except Exception as exc:
-            fallback["reasoning"].append(f"openai fallback used: {exc.__class__.__name__}")
+            fallback["reasoning"].append(f"openrouter fallback used: {exc.__class__.__name__}")
             return fallback
 
-        text_output = None
-        for item in payload.get("output", []):
-            for content in item.get("content", []):
-                if content.get("type") in {"output_text", "text"}:
-                    text_output = content.get("text")
-                    break
-            if text_output:
-                break
-
+        text_output = (
+            payload.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content")
+        )
         if not text_output:
-            fallback["reasoning"].append("openai fallback used: empty model output")
+            fallback["reasoning"].append("openrouter fallback used: empty model output")
             return fallback
 
         try:
             parsed = json.loads(text_output)
         except json.JSONDecodeError:
-            fallback["reasoning"].append("openai fallback used: invalid JSON output")
+            fallback["reasoning"].append("openrouter fallback used: invalid JSON output")
             return fallback
 
         return {
-            "llm_model": self.MODEL_NAME,
-            "provider": "openai",
+            "llm_model": settings.openrouter_model or self.MODEL_NAME,
+            "provider": "openrouter",
             "caption_style": parsed.get("caption_style", fallback["caption_style"]),
             "font_family": parsed.get("font_family", fallback["font_family"]),
             "color_palette": parsed.get("color_palette", fallback["color_palette"]),

@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     local_storage_path: str = "./storage"
     default_style_preset: str = "finance_clean"
     enable_mock_providers: bool = True
-    openai_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_model: str = "openai/gpt-5"
     elevenlabs_api_key: str | None = None
     webhook_timeout_seconds: int = 10
 
