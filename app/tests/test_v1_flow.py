@@ -98,3 +98,31 @@ def test_v1_end_to_end_flow() -> None:
     assert "subtitle_vtt" in asset_types
     assert "caption_plan" in asset_types
     assert "clip_candidate_json" in asset_types
+
+
+def test_v2_render_outputs_flow() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={"name": "Render Project", "default_style_preset": "kinetic_bold", "brand_settings_json": {}},
+    )
+    project_id = project.json()["id"]
+    job = client.post(
+        "/v1/jobs",
+        json={"project_id": project_id, "requested_platforms_json": ["9:16"], "requested_clip_count": 1, "style_preset": "kinetic_bold"},
+    )
+    job_id = job.json()["id"]
+    client.post(
+        f"/v1/jobs/{job_id}/upload",
+        files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")},
+    )
+    render = client.post(f"/v1/jobs/{job_id}/render")
+    assert render.status_code == 202
+    outputs = client.get(f"/v1/jobs/{job_id}/outputs")
+    body = outputs.json()
+    asset_types = {asset["asset_type"] for asset in body["outputs"][0]["assets"]}
+    assert "rendered_clip" in asset_types
+    assert "thumbnail" in asset_types
+    renders = client.get(f"/v1/renders/{job_id}")
+    assert renders.status_code == 200
+    assert len(renders.json()["renders"]) == 1
+    assert renders.json()["renders"][0]["status"] == "completed"
