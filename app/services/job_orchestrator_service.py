@@ -6,10 +6,13 @@ from app.models.enums import JobStatus, RenderStatus
 from app.models.job import Job
 from app.models.render import Render
 from app.models.transcript import TranscriptSegment, TranscriptWord
+from app.services.audio_mix_service import AudioMixService
 from app.services.broll_service import BrollService
 from app.services.caption_plan_service import CaptionPlanService
+from app.services.elevenlabs_service import ElevenLabsService
 from app.services.image_generation_service import ImageGenerationService
 from app.services.media_probe_service import MediaProbeService
+from app.services.narration_service import NarrationService
 from app.services.render_service import RenderService
 from app.services.subtitle_service import SubtitleService
 from app.services.transcript_intelligence_service import TranscriptIntelligenceService
@@ -20,9 +23,12 @@ from app.services.visual_plan_service import VisualPlanService
 class JobOrchestratorService:
     def __init__(self, db: Session):
         self.db = db
+        self.audio_mix_service = AudioMixService()
         self.broll_service = BrollService()
+        self.elevenlabs_service = ElevenLabsService()
         self.caption_plan_service = CaptionPlanService()
         self.image_generation_service = ImageGenerationService()
+        self.narration_service = NarrationService()
         self.media_probe_service = MediaProbeService()
         self.transcription_service = TranscriptionService()
         self.transcript_intelligence_service = TranscriptIntelligenceService()
@@ -66,7 +72,7 @@ class JobOrchestratorService:
 
         self.db.query(Asset).filter(
             Asset.job_id == job.id,
-            Asset.asset_type.in_(["transcript_json", "subtitle_srt", "subtitle_vtt"]),
+            Asset.asset_type.in_(["transcript_json", "subtitle_srt", "subtitle_vtt", "isolated_voice", "narration_audio", "narration_script"]),
         ).delete(synchronize_session=False)
         self.db.commit()
 
@@ -108,6 +114,7 @@ class JobOrchestratorService:
             self.db.commit()
 
         subtitle_assets = self.subtitle_service.build_assets(job, transcript)
+        isolated_voice = self.elevenlabs_service.isolate_voice(job.id, job.input_audio_url or job.input_video_url, job.narration_enabled)
         self.db.add(
             Asset(
                 job_id=job.id,
@@ -141,6 +148,8 @@ class JobOrchestratorService:
                 metadata_json={"content": subtitle_assets["vtt"]},
             )
         )
+        if isolated_voice:
+            self.db.add(Asset(job_id=job.id, clip_id=None, **isolated_voice))
         self.db.commit()
 
         job.status = JobStatus.analyzing.value
@@ -148,7 +157,7 @@ class JobOrchestratorService:
         job.progress_percent = 55
         self.db.commit()
 
-        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(["visual_plan", "caption_plan", "clip_candidate_json", "broll_plan", "generated_image", "rendered_clip", "thumbnail"])).delete(synchronize_session=False)
+        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(["visual_plan", "caption_plan", "clip_candidate_json", "broll_plan", "audio_mix_plan", "generated_image", "rendered_clip", "thumbnail"])).delete(synchronize_session=False)
         self.db.query(Render).filter(Render.job_id == job.id).delete(synchronize_session=False)
         self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id).delete(synchronize_session=False)
         self.db.commit()
@@ -175,6 +184,13 @@ class JobOrchestratorService:
             )
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="caption_plan", provider="caption_plan_service", prompt=None, url=f"caption-plan://{clip.id}", metadata_json={"groups": caption_groups, "style": clip.caption_style}))
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="broll_plan", provider="broll_service", prompt=None, url=f"broll-plan://{clip.id}", metadata_json=broll_plan))
+            narration_script = self.narration_service.build_script(clip.title, clip.hook, clip.cta_text)
+            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="narration_script", provider="narration_service", prompt=None, url=f"narration-script://{clip.id}", metadata_json={"script": narration_script}))
+            audio_mix_plan = self.audio_mix_service.build_mix_plan(clip.id, job.narration_enabled, job.narration_enabled)
+            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="audio_mix_plan", provider="audio_mix_service", prompt=None, url=f"audio-mix://{clip.id}", metadata_json=audio_mix_plan))
+            narration_asset = self.elevenlabs_service.generate_narration(job.id, clip.id, narration_script, job.narration_enabled)
+            if narration_asset:
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, **narration_asset))
             generated_images = self.image_generation_service.generate_for_broll(job.id, clip.id, broll_plan, job.broll_enabled)
             for generated_image in generated_images:
                 self.db.add(Asset(job_id=job.id, clip_id=clip.id, **generated_image))

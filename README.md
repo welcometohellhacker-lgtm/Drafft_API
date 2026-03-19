@@ -31,8 +31,10 @@ Final target: **Version 5**.
 
 ### Version 4 — Audio Enhancement + Narration
 - ElevenLabs provider abstraction
-- Speech cleanup / isolation seam
-- Narration planning and audio mix seam
+- voice isolation artifacts
+- narration script and narration audio artifacts
+- audio mix planning metadata
+- speech cleanup / isolation seam
 
 ### Version 5 — Full Automated Pipeline
 - Async orchestration
