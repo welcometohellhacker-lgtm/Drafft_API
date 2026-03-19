@@ -299,3 +299,25 @@ curl -X POST http://127.0.0.1:8000/v1/ultimate-clips \
   -F "broll_enabled=true" \
   -F "file=@./sample.mp4"
 ```
+
+
+## Remotion_Test branch
+
+This branch preserves the same FastAPI API surface, but swaps the placeholder render flow for a Remotion CLI-backed renderer.
+
+What changed on this branch:
+- `/v1/jobs/{job_id}/process` focuses on planning/pipeline assets
+- `/v1/jobs/{job_id}/render` consumes saved plans and selected clips
+- rendered outputs are file-backed under local storage
+- a colocated `remotion_renderer/` Node app powers animated compositions
+
+Branch runtime notes:
+- requires Node.js in addition to Python
+- requires installing dependencies inside `remotion_renderer/`
+- render output is served from `/storage/...`
+
+Basic Remotion setup:
+```bash
+cd remotion_renderer
+npm install
+```

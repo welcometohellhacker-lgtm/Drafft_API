@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.api import api_router
 from app.core.config import settings
@@ -28,3 +29,6 @@ def root() -> dict[str, str]:
 @app.get("/test-console", include_in_schema=False)
 def test_console() -> FileResponse:
     return FileResponse("app/static/test.html")
+
+
+app.mount("/storage", StaticFiles(directory="storage"), name="storage")

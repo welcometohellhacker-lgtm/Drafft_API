@@ -130,7 +130,7 @@ def render_job(job_id: str, db: Session = Depends(get_db)) -> dict:
     job = repo.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    updated = JobOrchestratorService(db).process(job, render_selected_immediately=True, regenerate_transcript=False)
+    updated = JobOrchestratorService(db).render_job(job)
     return {"job_id": updated.id, "status": updated.status, "current_step": updated.current_step}
 
 

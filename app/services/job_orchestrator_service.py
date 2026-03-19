@@ -132,6 +132,8 @@ class JobOrchestratorService:
                 metadata_json={"segments": transcript},
             )
         )
+        srt_path = self.render_service.storage.write_text_asset(self.render_service.storage.subtitles_dir(job.id) / 'job.srt', subtitle_assets['srt'])
+        vtt_path = self.render_service.storage.write_text_asset(self.render_service.storage.subtitles_dir(job.id) / 'job.vtt', subtitle_assets['vtt'])
         self.db.add(
             Asset(
                 job_id=job.id,
@@ -139,7 +141,7 @@ class JobOrchestratorService:
                 asset_type="subtitle_srt",
                 provider="subtitle_service",
                 prompt=None,
-                url=f"subtitle://{job.id}.srt",
+                url=self.render_service.storage.public_url_for(Path(srt_path)),
                 metadata_json={"content": subtitle_assets["srt"]},
             )
         )
@@ -150,7 +152,7 @@ class JobOrchestratorService:
                 asset_type="subtitle_vtt",
                 provider="subtitle_service",
                 prompt=None,
-                url=f"subtitle://{job.id}.vtt",
+                url=self.render_service.storage.public_url_for(Path(vtt_path)),
                 metadata_json={"content": subtitle_assets["vtt"]},
             )
         )
@@ -211,39 +213,48 @@ class JobOrchestratorService:
 
         should_render = render_selected_immediately
         if should_render:
-            job.status = JobStatus.rendering.value
-            job.current_step = "rendering"
-            job.progress_percent = 80
-            self.db.commit()
-            for clip in created_clips:
-                render_meta = self.render_service.create_render_metadata(clip.id, job.requested_platforms_json[0] if job.requested_platforms_json else "9:16")
-                render_output = self.render_service.build_render_output(
-                    job.id,
-                    clip.id,
-                    job.requested_platforms_json[0] if job.requested_platforms_json else "9:16",
-                    clip.caption_style,
-                )
-                self.db.add(
-                    Render(
-                        job_id=job.id,
-                        clip_id=clip.id,
-                        output_format=job.requested_platforms_json[0] if job.requested_platforms_json else "9:16",
-                        output_url=render_output["output_url"],
-                        subtitle_url=render_output["subtitle_url"],
-                        thumbnail_url=render_output["thumbnail_url"],
-                        metadata_json={**render_meta, **render_output["metadata_json"]},
-                        status=RenderStatus.completed.value,
-                    )
-                )
-                enrichment = self.output_enrichment_service.build_social_caption(clip.title, clip.hook, clip.cta_text)
-                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="rendered_clip", provider="render_service", prompt=None, url=render_output["output_url"], metadata_json={**render_output["metadata_json"], **enrichment}))
-                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="thumbnail", provider="render_service", prompt=None, url=render_output["thumbnail_url"], metadata_json={"clip_id": clip.id, "notes": enrichment["thumbnail_notes"]}))
-                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="social_caption", provider="output_enrichment_service", prompt=None, url=f"social-caption://{clip.id}", metadata_json=enrichment))
-            self.db.commit()
+            self.render_job(job, created_clips)
 
         self.db.add(Asset(job_id=job.id, clip_id=None, asset_type="webhook_event", provider="webhook_delivery_service", prompt=None, url=f"webhook://{job.id}/completed", metadata_json=self.webhook_delivery_service.build_event(job.id, "render.completed", "completed")))
         job.status = JobStatus.completed.value
         job.current_step = "completed"
+        job.progress_percent = 100
+        self.db.commit()
+        self.db.refresh(job)
+        return job
+
+
+    def render_job(self, job: Job, clips: list[ClipCandidate] | None = None) -> Job:
+        from pathlib import Path
+        from app.services.render_payload_builder import RenderPayloadBuilder
+
+        builder = RenderPayloadBuilder()
+        job.status = JobStatus.rendering.value
+        job.current_step = 'rendering'
+        job.progress_percent = 80
+        self.db.commit()
+
+        target_clips = clips or self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id, ClipCandidate.selected.is_(True)).all()
+        if not target_clips:
+            target_clips = self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id).all()
+
+        self.db.query(Render).filter(Render.job_id == job.id).delete(synchronize_session=False)
+        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(['rendered_clip', 'thumbnail', 'social_caption', 'webhook_event'])).delete(synchronize_session=False)
+        self.db.commit()
+
+        all_assets = self.db.query(Asset).filter(Asset.job_id == job.id).all()
+        for clip in target_clips:
+            props = builder.build(job, clip, all_assets)
+            render_meta = self.render_service.create_render_metadata(clip.id, job.requested_platforms_json[0] if job.requested_platforms_json else '9:16')
+            render_output = self.render_service.render_clip(job.id, clip.id, props)
+            self.db.add(Render(job_id=job.id, clip_id=clip.id, output_format=job.requested_platforms_json[0] if job.requested_platforms_json else '9:16', output_url=render_output['output_url'], subtitle_url=render_output['subtitle_url'], thumbnail_url=render_output['thumbnail_url'], metadata_json={**render_meta, **render_output['metadata_json']}, status=RenderStatus.completed.value))
+            enrichment = self.output_enrichment_service.build_social_caption(clip.title, clip.hook, clip.cta_text)
+            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='rendered_clip', provider='render_service', prompt=None, url=render_output['output_url'], metadata_json={**render_output['metadata_json'], **enrichment}))
+            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='thumbnail', provider='render_service', prompt=None, url=render_output['thumbnail_url'], metadata_json={'clip_id': clip.id, 'notes': enrichment['thumbnail_notes']}))
+            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='social_caption', provider='output_enrichment_service', prompt=None, url=f'social-caption://{clip.id}', metadata_json=enrichment))
+        self.db.add(Asset(job_id=job.id, clip_id=None, asset_type='webhook_event', provider='webhook_delivery_service', prompt=None, url=f'webhook://{job.id}/completed', metadata_json=self.webhook_delivery_service.build_event(job.id, 'render.completed', 'completed')))
+        job.status = JobStatus.completed.value
+        job.current_step = 'completed'
         job.progress_percent = 100
         self.db.commit()
         self.db.refresh(job)
