@@ -252,12 +252,15 @@ class JobOrchestratorService:
         for clip in target_clips:
             props = builder.build(job, clip, all_assets)
             render_meta = self.render_service.create_render_metadata(clip.id, job.requested_platforms_json[0] if job.requested_platforms_json else '9:16')
-            render_output = self.render_service.render_clip(job.id, clip.id, props)
-            self.db.add(Render(job_id=job.id, clip_id=clip.id, output_format=job.requested_platforms_json[0] if job.requested_platforms_json else '9:16', output_url=render_output['output_url'], subtitle_url=render_output['subtitle_url'], thumbnail_url=render_output['thumbnail_url'], metadata_json={**render_meta, **render_output['metadata_json']}, status=RenderStatus.completed.value))
-            enrichment = self.output_enrichment_service.build_social_caption(clip.title, clip.hook, clip.cta_text)
-            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='rendered_clip', provider='render_service', prompt=None, url=render_output['output_url'], metadata_json={**render_output['metadata_json'], **enrichment}))
-            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='thumbnail', provider='render_service', prompt=None, url=render_output['thumbnail_url'], metadata_json={'clip_id': clip.id, 'notes': enrichment['thumbnail_notes']}))
-            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='social_caption', provider='output_enrichment_service', prompt=None, url=f'social-caption://{clip.id}', metadata_json=enrichment))
+            try:
+                render_output = self.render_service.render_clip(job.id, clip.id, props)
+                self.db.add(Render(job_id=job.id, clip_id=clip.id, output_format=job.requested_platforms_json[0] if job.requested_platforms_json else '9:16', output_url=render_output['output_url'], subtitle_url=render_output['subtitle_url'], thumbnail_url=render_output['thumbnail_url'], metadata_json={**render_meta, **render_output['metadata_json']}, status=RenderStatus.completed.value))
+                enrichment = self.output_enrichment_service.build_social_caption(clip.title, clip.hook, clip.cta_text)
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='rendered_clip', provider='render_service', prompt=None, url=render_output['output_url'], metadata_json={**render_output['metadata_json'], **enrichment}))
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='thumbnail', provider='render_service', prompt=None, url=render_output['thumbnail_url'], metadata_json={'clip_id': clip.id, 'notes': enrichment['thumbnail_notes']}))
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type='social_caption', provider='output_enrichment_service', prompt=None, url=f'social-caption://{clip.id}', metadata_json=enrichment))
+            except Exception as exc:
+                self.db.add(Render(job_id=job.id, clip_id=clip.id, output_format=job.requested_platforms_json[0] if job.requested_platforms_json else '9:16', output_url=None, subtitle_url=None, thumbnail_url=None, metadata_json={**render_meta, 'error_type': exc.__class__.__name__}, status=RenderStatus.failed.value, error_message=str(exc)))
         self.db.add(Asset(job_id=job.id, clip_id=None, asset_type='webhook_event', provider='webhook_delivery_service', prompt=None, url=f'webhook://{job.id}/completed', metadata_json=self.webhook_delivery_service.build_event(job.id, 'render.completed', 'completed')))
         job.status = JobStatus.completed.value
         job.current_step = 'completed'

@@ -39,5 +39,6 @@ class RenderService:
                 'thumbnail_path': str(thumb_path),
                 'stdout': result['stdout'],
                 'stderr': result['stderr'],
+                'runtime': result['runtime'],
             },
         }
