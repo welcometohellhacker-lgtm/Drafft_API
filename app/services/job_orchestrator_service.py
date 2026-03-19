@@ -185,7 +185,12 @@ class JobOrchestratorService:
             self.db.add(clip)
             self.db.flush()
             created_clips.append(clip)
-            caption_groups = self.caption_plan_service.build_caption_groups(transcript, clip.caption_style)
+            clip_words = []
+            for segment_payload in transcript:
+                for word in segment_payload.get('words', []):
+                    if word['start_time'] >= clip.start_time and word['end_time'] <= clip.end_time:
+                        clip_words.append(word)
+            caption_plan = self.caption_plan_service.build_caption_plan(clip_words, clip.caption_style)
             broll_plan = self.broll_service.build_plan(clip.id, transcript, clip.broll_prompts_json)
             visual_plan = self.visual_plan_service.build(
                 clip_id=clip.id,
@@ -194,7 +199,7 @@ class JobOrchestratorService:
                 broll_prompts=clip.broll_prompts_json,
                 cta_text=clip.cta_text,
             )
-            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="caption_plan", provider="caption_plan_service", prompt=None, url=f"caption-plan://{clip.id}", metadata_json={"groups": caption_groups, "style": clip.caption_style}))
+            self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="caption_plan", provider="caption_plan_service", prompt=None, url=f"caption-plan://{clip.id}", metadata_json=caption_plan))
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="broll_plan", provider="broll_service", prompt=None, url=f"broll-plan://{clip.id}", metadata_json=broll_plan))
             narration_script = self.narration_service.build_script(clip.title, clip.hook, clip.cta_text)
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="narration_script", provider="narration_service", prompt=None, url=f"narration-script://{clip.id}", metadata_json={"script": narration_script}))
@@ -236,7 +241,7 @@ class JobOrchestratorService:
 
         target_clips = clips or self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id, ClipCandidate.selected.is_(True)).all()
         if not target_clips:
-            target_clips = self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id).all()
+            raise ValueError('No selected clips available to render')
 
         self.db.query(Render).filter(Render.job_id == job.id).delete(synchronize_session=False)
         self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(['rendered_clip', 'thumbnail', 'social_caption', 'webhook_event'])).delete(synchronize_session=False)

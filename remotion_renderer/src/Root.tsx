@@ -8,7 +8,7 @@ export const Root: React.FC = () => {
       <Composition
         id="VerticalClip"
         component={VerticalClip}
-        durationInFrames={900}
+        durationInFrames={450}
         fps={30}
         width={1080}
         height={1920}
@@ -16,15 +16,17 @@ export const Root: React.FC = () => {
           title: 'Drafft Clip',
           hook: 'Hook goes here',
           ctaText: 'Book a call today',
-          aspectRatio: '9:16',
-          captionGroups: [],
-          brollTimeline: [],
-          overlayTimeline: [],
+          clipStartSec: 0,
+          clipEndSec: 15,
+          clipDurationSec: 15,
+          sourceVideoUrl: '',
+          captions: {words: [], groups: [], style: 'finance_clean'},
+          visuals: {brollTimeline: [], overlayTimeline: [], transitionTimeline: [], zoomEvents: [], thumbnailTextOptions: [], renderNotes: {}},
           branding: {},
           colorPalette: {primary: '#0A2540', accent: '#00E5A8', text: '#FFFFFF'},
           animationPack: 'clean_finance_flow',
           transitionPack: 'smooth_fades',
-          thumbnailTextOptions: []
+          audio: {}
         }}
       />
     </>
