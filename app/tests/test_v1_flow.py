@@ -94,4 +94,6 @@ def test_v1_end_to_end_flow() -> None:
     asset_types = {asset["asset_type"] for asset in body["outputs"][0]["assets"]}
     assert "source_video" in asset_types
     assert "transcript_json" in asset_types
+    assert "subtitle_srt" in asset_types
+    assert "subtitle_vtt" in asset_types
     assert "clip_candidate_json" in asset_types
