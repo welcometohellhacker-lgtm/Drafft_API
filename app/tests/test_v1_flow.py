@@ -127,3 +127,25 @@ def test_v2_render_outputs_flow() -> None:
     assert renders.status_code == 200
     assert len(renders.json()["renders"]) == 1
     assert renders.json()["renders"][0]["status"] == "completed"
+
+
+def test_v3_visual_plan_contains_overlay_and_broll_metadata() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={"name": "Visual Plan Project", "default_style_preset": "finance_clean", "brand_settings_json": {}},
+    )
+    project_id = project.json()["id"]
+    job = client.post(
+        "/v1/jobs",
+        json={"project_id": project_id, "requested_platforms_json": ["9:16"], "requested_clip_count": 1, "broll_enabled": True},
+    )
+    job_id = job.json()["id"]
+    client.post(f"/v1/jobs/{job_id}/upload", files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")})
+    client.post(f"/v1/jobs/{job_id}/process", json={"regenerate_transcript": False, "render_selected_immediately": False})
+    outputs = client.get(f"/v1/jobs/{job_id}/outputs")
+    assets = outputs.json()["outputs"][0]["assets"]
+    visual_plan = next(asset for asset in assets if asset["asset_type"] == "visual_plan")
+    metadata = visual_plan["metadata_json"]
+    assert len(metadata["broll_timeline"]) >= 1
+    assert len(metadata["overlay_timeline"]) >= 1
+    assert len(metadata["thumbnail_text_options"]) >= 1
