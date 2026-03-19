@@ -6,6 +6,7 @@ from app.models.enums import JobStatus, RenderStatus
 from app.models.job import Job
 from app.models.render import Render
 from app.models.transcript import TranscriptSegment, TranscriptWord
+from app.services.caption_plan_service import CaptionPlanService
 from app.services.media_probe_service import MediaProbeService
 from app.services.render_service import RenderService
 from app.services.subtitle_service import SubtitleService
@@ -17,6 +18,7 @@ from app.services.visual_plan_service import VisualPlanService
 class JobOrchestratorService:
     def __init__(self, db: Session):
         self.db = db
+        self.caption_plan_service = CaptionPlanService()
         self.media_probe_service = MediaProbeService()
         self.transcription_service = TranscriptionService()
         self.transcript_intelligence_service = TranscriptIntelligenceService()
@@ -142,7 +144,7 @@ class JobOrchestratorService:
         job.progress_percent = 55
         self.db.commit()
 
-        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type == "visual_plan").delete(synchronize_session=False)
+        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(["visual_plan", "caption_plan", "clip_candidate_json"])).delete(synchronize_session=False)
         self.db.query(Render).filter(Render.job_id == job.id).delete(synchronize_session=False)
         self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id).delete(synchronize_session=False)
         self.db.commit()
@@ -157,6 +159,18 @@ class JobOrchestratorService:
                 aspect_ratio=(job.requested_platforms_json[0] if job.requested_platforms_json else "9:16"),
                 style=clip.caption_style,
                 broll_prompts=clip.broll_prompts_json,
+            )
+            caption_groups = self.caption_plan_service.build_caption_groups(transcript, clip.caption_style)
+            self.db.add(
+                Asset(
+                    job_id=job.id,
+                    clip_id=clip.id,
+                    asset_type="caption_plan",
+                    provider="caption_plan_service",
+                    prompt=None,
+                    url=f"caption-plan://{clip.id}",
+                    metadata_json={"groups": caption_groups, "style": clip.caption_style},
+                )
             )
             self.db.add(
                 Asset(
