@@ -199,3 +199,28 @@ def test_v4_narration_assets_created_when_enabled() -> None:
     assert "isolated_voice" in asset_types
     assert "narration_script" in asset_types
     assert "narration_audio" in asset_types
+
+
+def test_v4_audio_mix_plan_created_for_clip() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={"name": "Audio Mix Project", "default_style_preset": "finance_clean", "brand_settings_json": {}},
+    )
+    project_id = project.json()["id"]
+    job = client.post(
+        "/v1/jobs",
+        json={
+            "project_id": project_id,
+            "requested_platforms_json": ["9:16"],
+            "requested_clip_count": 1,
+            "narration_enabled": True,
+        },
+    )
+    job_id = job.json()["id"]
+    client.post(f"/v1/jobs/{job_id}/upload", files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")})
+    client.post(f"/v1/jobs/{job_id}/process", json={"regenerate_transcript": False, "render_selected_immediately": False})
+    outputs = client.get(f"/v1/jobs/{job_id}/outputs")
+    assets = outputs.json()["outputs"][0]["assets"]
+    audio_mix = next(asset for asset in assets if asset["asset_type"] == "audio_mix_plan")
+    assert audio_mix["metadata_json"]["background_music"]["enabled"] is True
+    assert audio_mix["metadata_json"]["normalization"]["target_lufs"] == -14
