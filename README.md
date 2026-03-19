@@ -279,7 +279,7 @@ curl http://127.0.0.1:8000/v1/health
 
 What it does:
 - uploads the video
-- uses a `CHATGPT-5.4` planning seam to choose caption style, colors, animation pack, and transition direction
+- uses real OpenAI Responses API integration with model `gpt-5.4` when `OPENAI_API_KEY` is set, with a safe fallback planner otherwise
 - runs transcript, clip detection, caption planning, B-roll planning, narration, render metadata, and output enrichment
 - returns a completed job with outputs ready to inspect
 

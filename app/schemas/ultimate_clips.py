@@ -17,3 +17,5 @@ class UltimateClipsResponse(BaseModel):
     progress_percent: int
     llm_model: str
     selected_style: str
+    cto_score: int
+    gallery: list[dict]

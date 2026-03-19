@@ -12,7 +12,7 @@ class RenderService:
         return {
             "output_url": f"render://{job_id}/{clip_id}/{aspect_ratio.replace(':', 'x')}.mp4",
             "subtitle_url": f"subtitle://{job_id}.srt",
-            "thumbnail_url": f"thumbnail://{job_id}/{clip_id}.jpg",
+            "thumbnail_url": f"https://placehold.co/320x568/png?text={clip_id}",
             "metadata_json": {
                 "engine": "ffmpeg_fallback",
                 "caption_burned_in": True,

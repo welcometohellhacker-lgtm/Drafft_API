@@ -70,6 +70,20 @@ def create_ultimate_clip_job(
     db.refresh(job)
 
     updated = JobOrchestratorService(db).process(job, render_selected_immediately=True, regenerate_transcript=False)
+    assets = db.query(Asset).filter(Asset.job_id == updated.id).all()
+    renders = [asset for asset in assets if asset.asset_type == "rendered_clip"]
+    thumbnails = {asset.clip_id: asset for asset in assets if asset.asset_type == "thumbnail"}
+    social = {asset.clip_id: asset for asset in assets if asset.asset_type == "social_caption"}
+    gallery = []
+    for render in renders:
+        social_asset = social.get(render.clip_id)
+        gallery.append({
+            "clip_id": render.clip_id,
+            "download_url": render.url,
+            "thumbnail_url": thumbnails.get(render.clip_id).url if thumbnails.get(render.clip_id) else None,
+            "social_caption": social_asset.metadata_json.get("social_caption") if social_asset else None,
+            "cto_score": social_asset.metadata_json.get("cto_score") if social_asset else creative.get("cto_score", 80),
+        })
     return UltimateClipsResponse(
         job_id=updated.id,
         status=updated.status,
@@ -77,4 +91,6 @@ def create_ultimate_clip_job(
         progress_percent=updated.progress_percent,
         llm_model=creative["llm_model"],
         selected_style=creative["caption_style"],
+        cto_score=creative.get("cto_score", 80),
+        gallery=gallery,
     )

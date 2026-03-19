@@ -319,3 +319,26 @@ def test_ultimate_clips_endpoint_runs_full_auto_flow() -> None:
     body = response.json()
     assert body["llm_model"] == "CHATGPT-5.4"
     assert body["selected_style"] in {"viral_pop", "finance_clean"}
+
+
+def test_ultimate_clips_response_contains_gallery_and_cto_score() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={"name": "Ultimate Gallery Project", "default_style_preset": "finance_clean", "brand_settings_json": {"primary_color": "#123456"}},
+    )
+    project_id = project.json()["id"]
+    response = client.post(
+        "/v1/ultimate-clips",
+        data={
+            "project_id": project_id,
+            "requested_clip_count": 2,
+            "user_instructions": "Make this automatic and high-converting.",
+            "narration_enabled": "true",
+            "broll_enabled": "true",
+        },
+        files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert isinstance(body["gallery"], list)
+    assert body["cto_score"] >= 0

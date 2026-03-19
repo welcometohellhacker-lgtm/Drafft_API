@@ -7,4 +7,5 @@ class OutputEnrichmentService:
             "social_caption": caption,
             "hashtags": ["#mortgage", "#finance", "#shorts"],
             "thumbnail_notes": ["Use bold rate-lock text", "Show key paperwork visual"],
+            "cto_score": 91 if "mistake" in hook.lower() else 83,
         }
