@@ -89,4 +89,9 @@ def test_v1_end_to_end_flow() -> None:
 
     outputs = client.get(f"/v1/jobs/{job_id}/outputs")
     assert outputs.status_code == 200
-    assert outputs.json()["job_id"] == job_id
+    body = outputs.json()
+    assert body["job_id"] == job_id
+    asset_types = {asset["asset_type"] for asset in body["outputs"][0]["assets"]}
+    assert "source_video" in asset_types
+    assert "transcript_json" in asset_types
+    assert "clip_candidate_json" in asset_types

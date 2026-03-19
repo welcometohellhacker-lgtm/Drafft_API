@@ -56,6 +56,9 @@ class JobOrchestratorService:
             self.db.commit()
             existing_segments = []
 
+        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type == "transcript_json").delete()
+        self.db.commit()
+
         if existing_segments:
             transcript = [
                 {
@@ -93,6 +96,19 @@ class JobOrchestratorService:
                     )
             self.db.commit()
 
+        self.db.add(
+            Asset(
+                job_id=job.id,
+                clip_id=None,
+                asset_type="transcript_json",
+                provider="mock_transcription_provider",
+                prompt=None,
+                url=f"transcript://{job.id}",
+                metadata_json={"segments": transcript},
+            )
+        )
+        self.db.commit()
+
         job.status = JobStatus.analyzing.value
         job.current_step = "analyze_transcript"
         job.progress_percent = 55
@@ -123,6 +139,17 @@ class JobOrchestratorService:
                     prompt=None,
                     url=f"visual-plan://{clip.id}",
                     metadata_json=visual_plan,
+                )
+            )
+            self.db.add(
+                Asset(
+                    job_id=job.id,
+                    clip_id=clip.id,
+                    asset_type="clip_candidate_json",
+                    provider="transcript_intelligence_service",
+                    prompt=None,
+                    url=f"clip-candidate://{clip.id}",
+                    metadata_json=candidate_payload,
                 )
             )
             if render_selected_immediately or clip.selected:

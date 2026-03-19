@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.asset import Asset
 from app.repositories.job_repository import JobRepository
 from app.repositories.project_repository import ProjectRepository
 from app.schemas.clip_selection import ClipSelectionRequest
@@ -53,6 +54,17 @@ def upload_video(job_id: str, file: UploadFile = File(...), db: Session = Depend
     job.status = "uploaded"
     job.current_step = "uploaded"
     job.progress_percent = 5
+    db.add(
+        Asset(
+            job_id=job.id,
+            clip_id=None,
+            asset_type="source_video",
+            provider="local_storage",
+            prompt=None,
+            url=stored_path,
+            metadata_json={"filename": file.filename, "content_type": file.content_type},
+        )
+    )
     db.commit()
     db.refresh(job)
     return UploadResponse(job_id=job.id, filename=file.filename, content_type=file.content_type or "application/octet-stream", stored_path=stored_path)
