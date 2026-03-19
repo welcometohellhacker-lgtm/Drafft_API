@@ -34,7 +34,7 @@ class JobRepository:
     def clip_candidates(self, job_id: str) -> list[ClipCandidate]:
         return self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job_id).order_by(ClipCandidate.score.desc()).all()
 
-    def outputs(self, job_id: str) -> list[dict]:
+    def outputs(self, job_id: str) -> dict:
         renders = self.db.query(Render).filter(Render.job_id == job_id).all()
         assets = self.db.query(Asset).filter(Asset.job_id == job_id).all()
         return {
