@@ -161,3 +161,113 @@ docker compose up --build
 - finished features are committed incrementally on the active milestone branch
 - completed milestones are merged upward progressively
 - see `docs/VERSIONING.md` for the release flow
+
+## Example Commands To Test
+
+Start the API first:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### 1. Create a project
+```bash
+curl -X POST http://127.0.0.1:8000/v1/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Drafft Demo Project",
+    "description": "Internal mortgage demo",
+    "default_style_preset": "finance_clean",
+    "brand_settings_json": {
+      "primary_color": "#123456",
+      "font_family": "Inter",
+      "cta_preset": "finance_clean_cta"
+    }
+  }'
+```
+
+### 2. Create a job
+Replace `PROJECT_ID` with the project id returned above.
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "PROJECT_ID",
+    "requested_platforms_json": ["9:16"],
+    "requested_clip_count": 2,
+    "user_instructions": "Focus on mortgage mistakes and strong CTA moments.",
+    "narration_enabled": true,
+    "broll_enabled": true,
+    "style_preset": "strong_cta"
+  }'
+```
+
+### 3. Upload a video
+Replace `JOB_ID` and file path.
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/upload \
+  -F "file=@./sample.mp4"
+```
+
+### 4. Process the job
+```bash
+curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/process \
+  -H "Content-Type: application/json" \
+  -d '{
+    "regenerate_transcript": false,
+    "render_selected_immediately": false
+  }'
+```
+
+### 5. Poll job status
+```bash
+curl http://127.0.0.1:8000/v1/jobs/JOB_ID/status
+```
+
+### 6. Read transcript
+```bash
+curl http://127.0.0.1:8000/v1/jobs/JOB_ID/transcript
+```
+
+### 7. Read clip candidates
+```bash
+curl http://127.0.0.1:8000/v1/jobs/JOB_ID/clips/candidates
+```
+
+### 8. Select one or more clips
+Replace `CLIP_ID_1` with ids returned from the candidates endpoint.
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/clips/select \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clip_ids": ["CLIP_ID_1"]
+  }'
+```
+
+### 9. Trigger render flow
+```bash
+curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/render
+```
+
+### 10. Read outputs
+```bash
+curl http://127.0.0.1:8000/v1/jobs/JOB_ID/outputs
+```
+
+### 11. Read render records
+```bash
+curl http://127.0.0.1:8000/v1/renders/JOB_ID
+```
+
+### 12. Inspect style presets
+```bash
+curl http://127.0.0.1:8000/v1/style-presets
+```
+
+### 13. Health check
+```bash
+curl http://127.0.0.1:8000/v1/health
+```
