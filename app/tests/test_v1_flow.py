@@ -268,3 +268,31 @@ def test_v5_branding_profile_propagates_to_visual_plan() -> None:
     assert branding["metadata_json"]["brand_settings"]["primary_color"] == "#123456"
     visual_plan = next(asset for asset in assets if asset["asset_type"] == "visual_plan")
     assert visual_plan["metadata_json"]["branding"]["style_preset"] == "strong_cta"
+
+
+def test_v5_output_enrichment_assets_created_after_render() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={"name": "Enrichment Project", "default_style_preset": "finance_clean", "brand_settings_json": {}},
+    )
+    project_id = project.json()["id"]
+    job = client.post(
+        "/v1/jobs",
+        json={
+            "project_id": project_id,
+            "requested_platforms_json": ["9:16"],
+            "requested_clip_count": 1,
+            "narration_enabled": True,
+            "broll_enabled": True,
+        },
+    )
+    job_id = job.json()["id"]
+    client.post(f"/v1/jobs/{job_id}/upload", files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")})
+    client.post(f"/v1/jobs/{job_id}/render")
+    outputs = client.get(f"/v1/jobs/{job_id}/outputs")
+    assets = outputs.json()["outputs"][0]["assets"]
+    asset_types = {asset["asset_type"] for asset in assets}
+    assert "social_caption" in asset_types
+    assert "webhook_event" in asset_types
+    rendered = next(asset for asset in assets if asset["asset_type"] == "rendered_clip")
+    assert "social_caption" in rendered["metadata_json"]

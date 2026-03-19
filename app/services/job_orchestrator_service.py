@@ -12,8 +12,10 @@ from app.services.branding_service import BrandingService
 from app.services.caption_plan_service import CaptionPlanService
 from app.services.elevenlabs_service import ElevenLabsService
 from app.services.image_generation_service import ImageGenerationService
+from app.services.output_enrichment_service import OutputEnrichmentService
 from app.services.media_probe_service import MediaProbeService
 from app.services.narration_service import NarrationService
+from app.services.webhook_delivery_service import WebhookDeliveryService
 from app.services.render_service import RenderService
 from app.services.subtitle_service import SubtitleService
 from app.services.transcript_intelligence_service import TranscriptIntelligenceService
@@ -30,7 +32,9 @@ class JobOrchestratorService:
         self.elevenlabs_service = ElevenLabsService()
         self.caption_plan_service = CaptionPlanService()
         self.image_generation_service = ImageGenerationService()
+        self.output_enrichment_service = OutputEnrichmentService()
         self.narration_service = NarrationService()
+        self.webhook_delivery_service = WebhookDeliveryService()
         self.media_probe_service = MediaProbeService()
         self.transcription_service = TranscriptionService()
         self.transcript_intelligence_service = TranscriptIntelligenceService()
@@ -159,7 +163,7 @@ class JobOrchestratorService:
         job.progress_percent = 55
         self.db.commit()
 
-        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(["visual_plan", "caption_plan", "clip_candidate_json", "broll_plan", "audio_mix_plan", "branding_profile", "generated_image", "rendered_clip", "thumbnail"])).delete(synchronize_session=False)
+        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(["visual_plan", "caption_plan", "clip_candidate_json", "broll_plan", "audio_mix_plan", "branding_profile", "generated_image", "rendered_clip", "thumbnail", "social_caption", "webhook_event"])).delete(synchronize_session=False)
         self.db.query(Render).filter(Render.job_id == job.id).delete(synchronize_session=False)
         self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id).delete(synchronize_session=False)
         self.db.commit()
@@ -231,10 +235,13 @@ class JobOrchestratorService:
                         status=RenderStatus.completed.value,
                     )
                 )
-                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="rendered_clip", provider="render_service", prompt=None, url=render_output["output_url"], metadata_json=render_output["metadata_json"]))
-                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="thumbnail", provider="render_service", prompt=None, url=render_output["thumbnail_url"], metadata_json={"clip_id": clip.id}))
+                enrichment = self.output_enrichment_service.build_social_caption(clip.title, clip.hook, clip.cta_text)
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="rendered_clip", provider="render_service", prompt=None, url=render_output["output_url"], metadata_json={**render_output["metadata_json"], **enrichment}))
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="thumbnail", provider="render_service", prompt=None, url=render_output["thumbnail_url"], metadata_json={"clip_id": clip.id, "notes": enrichment["thumbnail_notes"]}))
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="social_caption", provider="output_enrichment_service", prompt=None, url=f"social-caption://{clip.id}", metadata_json=enrichment))
             self.db.commit()
 
+        self.db.add(Asset(job_id=job.id, clip_id=None, asset_type="webhook_event", provider="webhook_delivery_service", prompt=None, url=f"webhook://{job.id}/completed", metadata_json=self.webhook_delivery_service.build_event(job.id, "render.completed", "completed")))
         job.status = JobStatus.completed.value
         job.current_step = "completed"
         job.progress_percent = 100

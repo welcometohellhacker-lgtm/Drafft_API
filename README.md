@@ -37,14 +37,13 @@ Final target: **Version 5**.
 - speech cleanup / isolation seam
 
 ### Version 5 — Full Automated Pipeline
-- Async orchestration
+- Async-style orchestration and status polling
 - Reusable styles and branding presets
-- Render queue
-- Outputs metadata
-- Thumbnails
+- Render queue semantics and output tracking
+- Outputs metadata and thumbnails
 - Social caption suggestions
-- Webhooks
-- Retries and error handling
+- Webhook event artifacts
+- Retry/error metadata surfaces
 
 ## Tech Stack
 - FastAPI
