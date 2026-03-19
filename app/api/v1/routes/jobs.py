@@ -12,10 +12,12 @@ from app.schemas.job import (
     JobOutputsResponse,
     JobProcessRequest,
     JobResponse,
+    JobStatusResponse,
     TranscriptSegmentResponse,
 )
 from app.schemas.upload import UploadResponse
 from app.services.job_orchestrator_service import JobOrchestratorService
+from app.services.status_service import StatusService
 from app.services.storage_service import StorageService
 
 router = APIRouter()
@@ -70,18 +72,23 @@ def upload_video(job_id: str, file: UploadFile = File(...), db: Session = Depend
     return UploadResponse(job_id=job.id, filename=file.filename, content_type=file.content_type or "application/octet-stream", stored_path=stored_path)
 
 
-@router.post("/{job_id}/process", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
-def process_job(job_id: str, payload: JobProcessRequest, db: Session = Depends(get_db)) -> JobResponse:
+@router.post("/{job_id}/process", status_code=status.HTTP_202_ACCEPTED)
+def process_job(job_id: str, payload: JobProcessRequest, db: Session = Depends(get_db)) -> dict:
     repo = JobRepository(db)
     job = repo.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    job.status = "queued"
+    job.current_step = "queued"
+    job.progress_percent = max(job.progress_percent, 6)
+    db.commit()
+    db.refresh(job)
     updated = JobOrchestratorService(db).process(
         job,
         render_selected_immediately=payload.render_selected_immediately,
         regenerate_transcript=payload.regenerate_transcript,
     )
-    return JobResponse.model_validate(updated)
+    return {"job_id": updated.id, "accepted": True, "status_url": f"/v1/jobs/{updated.id}/status"}
 
 
 @router.get("/{job_id}/transcript", response_model=list[TranscriptSegmentResponse])
@@ -133,3 +140,12 @@ def get_outputs(job_id: str, db: Session = Depends(get_db)) -> JobOutputsRespons
     if not repo.get(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     return JobOutputsResponse(job_id=job_id, outputs=[repo.outputs(job_id)])
+
+
+@router.get("/{job_id}/status", response_model=JobStatusResponse)
+def get_job_status(job_id: str, db: Session = Depends(get_db)) -> JobStatusResponse:
+    repo = JobRepository(db)
+    job = repo.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobStatusResponse(**StatusService().build_status_payload(job))

@@ -224,3 +224,22 @@ def test_v4_audio_mix_plan_created_for_clip() -> None:
     audio_mix = next(asset for asset in assets if asset["asset_type"] == "audio_mix_plan")
     assert audio_mix["metadata_json"]["background_music"]["enabled"] is True
     assert audio_mix["metadata_json"]["normalization"]["target_lufs"] == -14
+
+
+def test_v5_status_endpoint_returns_timeline() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={"name": "Status Project", "default_style_preset": "finance_clean", "brand_settings_json": {}},
+    )
+    project_id = project.json()["id"]
+    job = client.post(
+        "/v1/jobs",
+        json={"project_id": project_id, "requested_platforms_json": ["9:16"], "requested_clip_count": 1},
+    )
+    job_id = job.json()["id"]
+    client.post(f"/v1/jobs/{job_id}/upload", files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")})
+    process = client.post(f"/v1/jobs/{job_id}/process", json={"regenerate_transcript": False, "render_selected_immediately": False})
+    assert process.status_code == 202
+    status_response = client.get(f"/v1/jobs/{job_id}/status")
+    assert status_response.status_code == 200
+    assert len(status_response.json()["timeline"]) >= 3
