@@ -92,6 +92,7 @@
         <button class="secondary" onclick="getCandidates()">Candidates</button>
         <button class="secondary" onclick="getOutputs()">Outputs</button>
         <button class="secondary" onclick="getRenders()">Renders</button>
+        <button onclick="listAllVideos()">List All Videos</button>
       </div>
     </div>
 
@@ -212,6 +213,32 @@
       cto_score: social[a.clip_id]?.metadata_json?.cto_score || a.metadata_json?.cto_score,
     }));
     renderGallery(rendered);
+  }
+
+  async function listAllVideos() {
+    show('Loading all videos...');
+    const jobs = await fetch('/v1/jobs').then(r => r.json());
+    if (!jobs.length) { show('No jobs found.'); renderGallery([]); return; }
+    const allClips = [];
+    for (const job of jobs) {
+      try {
+        const resp = await fetch(`/v1/jobs/${job.id}/outputs`).then(r => r.json());
+        const assets = resp.outputs?.[0]?.assets || [];
+        const thumbnails = Object.fromEntries(assets.filter(a => a.asset_type === 'thumbnail').map(a => [a.clip_id, a]));
+        const social = Object.fromEntries(assets.filter(a => a.asset_type === 'social_caption').map(a => [a.clip_id, a]));
+        assets.filter(a => a.asset_type === 'rendered_clip').forEach(a => {
+          allClips.push({
+            clip_id: a.clip_id,
+            download_url: a.url,
+            thumbnail_url: thumbnails[a.clip_id]?.url,
+            social_caption: social[a.clip_id]?.metadata_json?.social_caption || a.metadata_json?.social_caption,
+            cto_score: social[a.clip_id]?.metadata_json?.cto_score || a.metadata_json?.cto_score,
+          });
+        });
+      } catch {}
+    }
+    show({ total_jobs: jobs.length, total_clips: allClips.length });
+    renderGallery(allClips);
   }
 
   async function getStatus() { await jsonFetch(`/v1/jobs/${document.getElementById('lookupJobId').value}/status`); }

@@ -222,6 +222,9 @@ class JobOrchestratorService:
                     clip.id,
                     job.requested_platforms_json[0] if job.requested_platforms_json else "9:16",
                     clip.caption_style,
+                    source_path=job.input_video_url,
+                    start_time=clip.start_time,
+                    end_time=clip.end_time,
                 )
                 self.db.add(
                     Render(

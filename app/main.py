@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.api import api_router
 from app.core.config import settings
@@ -18,6 +20,11 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+# Serve rendered clips and thumbnails from local storage
+storage_path = Path(settings.local_storage_path)
+storage_path.mkdir(parents=True, exist_ok=True)
+app.mount("/files", StaticFiles(directory=str(storage_path)), name="files")
 
 
 @app.get("/")
