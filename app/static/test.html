@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drafft API Test Console</title>
+  <style>
+    body { font-family: Inter, Arial, sans-serif; margin: 24px; background: #0f172a; color: #e2e8f0; }
+    h1, h2 { color: #f8fafc; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .card { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 16px; }
+    input, textarea, button, select { width: 100%; margin-top: 8px; margin-bottom: 12px; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #020617; color: #e2e8f0; }
+    button { cursor: pointer; background: #2563eb; border: none; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #020617; padding: 12px; border-radius: 8px; min-height: 120px; }
+    .full { grid-column: 1 / -1; }
+  </style>
+</head>
+<body>
+  <h1>Drafft API Browser Test</h1>
+  <p>Use this page to test project creation, normal jobs, render flow, and <strong>Ultimate_CLIPS</strong>.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Create Project</h2>
+      <input id="projectName" placeholder="Project name" value="Browser Test Project" />
+      <textarea id="brandJson">{"primary_color":"#123456","font_family":"Inter"}</textarea>
+      <button onclick="createProject()">Create Project</button>
+    </div>
+
+    <div class="card">
+      <h2>Create Job</h2>
+      <input id="projectId" placeholder="Project ID" />
+      <textarea id="jobInstructions">Focus on the strongest mortgage advice moments.</textarea>
+      <button onclick="createJob()">Create Standard Job</button>
+    </div>
+
+    <div class="card">
+      <h2>Upload + Process Standard Job</h2>
+      <input id="jobId" placeholder="Job ID" />
+      <input id="videoFile" type="file" />
+      <button onclick="uploadVideo()">Upload Video</button>
+      <button onclick="processJob()">Process Job</button>
+      <button onclick="renderJob()">Render Job</button>
+    </div>
+
+    <div class="card">
+      <h2>Ultimate_CLIPS</h2>
+      <input id="ultimateProjectId" placeholder="Project ID" />
+      <textarea id="ultimateInstructions">Make this high-engagement with the best captions, colors, animation, CTA, and clip choices automatically.</textarea>
+      <input id="ultimateVideoFile" type="file" />
+      <button onclick="runUltimateClips()">Run Ultimate_CLIPS</button>
+    </div>
+
+    <div class="card full">
+      <h2>Fetch Data</h2>
+      <input id="lookupJobId" placeholder="Job ID for lookup" />
+      <button onclick="getStatus()">Get Status</button>
+      <button onclick="getTranscript()">Get Transcript</button>
+      <button onclick="getCandidates()">Get Candidates</button>
+      <button onclick="getOutputs()">Get Outputs</button>
+      <button onclick="getRenders()">Get Renders</button>
+    </div>
+
+    <div class="card full">
+      <h2>Response</h2>
+      <pre id="output">Ready.</pre>
+    </div>
+  </div>
+
+  <script>
+    const output = document.getElementById('output');
+    const show = (data) => output.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+
+    async function createProject() {
+      const res = await fetch('/v1/projects', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          name: document.getElementById('projectName').value,
+          default_style_preset: 'finance_clean',
+          brand_settings_json: JSON.parse(document.getElementById('brandJson').value || '{}')
+        })
+      });
+      const data = await res.json();
+      document.getElementById('projectId').value = data.id || '';
+      document.getElementById('ultimateProjectId').value = data.id || '';
+      show(data);
+    }
+
+    async function createJob() {
+      const res = await fetch('/v1/jobs', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          project_id: document.getElementById('projectId').value,
+          requested_platforms_json: ['9:16'],
+          requested_clip_count: 2,
+          user_instructions: document.getElementById('jobInstructions').value,
+          narration_enabled: true,
+          broll_enabled: true,
+          style_preset: 'finance_clean'
+        })
+      });
+      const data = await res.json();
+      document.getElementById('jobId').value = data.id || '';
+      document.getElementById('lookupJobId').value = data.id || '';
+      show(data);
+    }
+
+    async function uploadVideo() {
+      const file = document.getElementById('videoFile').files[0];
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/v1/jobs/${document.getElementById('jobId').value}/upload`, { method: 'POST', body: form });
+      show(await res.json());
+    }
+
+    async function processJob() {
+      const res = await fetch(`/v1/jobs/${document.getElementById('jobId').value}/process`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ regenerate_transcript: false, render_selected_immediately: false })
+      });
+      const data = await res.json();
+      document.getElementById('lookupJobId').value = document.getElementById('jobId').value;
+      show(data);
+    }
+
+    async function renderJob() {
+      const res = await fetch(`/v1/jobs/${document.getElementById('jobId').value}/render`, { method: 'POST' });
+      show(await res.json());
+    }
+
+    async function runUltimateClips() {
+      const file = document.getElementById('ultimateVideoFile').files[0];
+      const form = new FormData();
+      form.append('project_id', document.getElementById('ultimateProjectId').value);
+      form.append('requested_clip_count', '3');
+      form.append('user_instructions', document.getElementById('ultimateInstructions').value);
+      form.append('narration_enabled', 'true');
+      form.append('broll_enabled', 'true');
+      form.append('file', file);
+      const res = await fetch('/v1/ultimate-clips', { method: 'POST', body: form });
+      const data = await res.json();
+      document.getElementById('lookupJobId').value = data.job_id || '';
+      show(data);
+    }
+
+    async function getStatus() { show(await (await fetch(`/v1/jobs/${document.getElementById('lookupJobId').value}/status`)).json()); }
+    async function getTranscript() { show(await (await fetch(`/v1/jobs/${document.getElementById('lookupJobId').value}/transcript`)).json()); }
+    async function getCandidates() { show(await (await fetch(`/v1/jobs/${document.getElementById('lookupJobId').value}/clips/candidates`)).json()); }
+    async function getOutputs() { show(await (await fetch(`/v1/jobs/${document.getElementById('lookupJobId').value}/outputs`)).json()); }
+    async function getRenders() { show(await (await fetch(`/v1/renders/${document.getElementById('lookupJobId').value}`)).json()); }
+  </script>
+</body>
+</html>

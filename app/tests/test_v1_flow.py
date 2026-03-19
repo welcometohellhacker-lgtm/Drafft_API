@@ -296,3 +296,26 @@ def test_v5_output_enrichment_assets_created_after_render() -> None:
     assert "webhook_event" in asset_types
     rendered = next(asset for asset in assets if asset["asset_type"] == "rendered_clip")
     assert "social_caption" in rendered["metadata_json"]
+
+
+def test_ultimate_clips_endpoint_runs_full_auto_flow() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={"name": "Ultimate Project", "default_style_preset": "finance_clean", "brand_settings_json": {"primary_color": "#123456"}},
+    )
+    project_id = project.json()["id"]
+    response = client.post(
+        "/v1/ultimate-clips",
+        data={
+            "project_id": project_id,
+            "requested_clip_count": 2,
+            "user_instructions": "Make this automatic and high-converting.",
+            "narration_enabled": "true",
+            "broll_enabled": "true",
+        },
+        files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["llm_model"] == "CHATGPT-5.4"
+    assert body["selected_style"] in {"viral_pop", "finance_clean"}

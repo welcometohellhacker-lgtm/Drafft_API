@@ -1,0 +1,80 @@
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.models.asset import Asset
+from app.repositories.job_repository import JobRepository
+from app.repositories.project_repository import ProjectRepository
+from app.schemas.job import JobCreate
+from app.schemas.ultimate_clips import UltimateClipsRequest, UltimateClipsResponse
+from app.services.job_orchestrator_service import JobOrchestratorService
+from app.services.llm_intelligence_service import LLMIntelligenceService
+from app.services.storage_service import StorageService
+
+router = APIRouter()
+
+
+@router.post("", response_model=UltimateClipsResponse, status_code=status.HTTP_201_CREATED)
+def create_ultimate_clip_job(
+    payload: UltimateClipsRequest = Depends(),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> UltimateClipsResponse:
+    project = ProjectRepository(db).get(payload.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    planner = LLMIntelligenceService()
+    creative = planner.choose_creative_direction([], project.brand_settings_json)
+
+    job = JobRepository(db).create(
+        JobCreate(
+            project_id=payload.project_id,
+            requested_platforms_json=payload.requested_platforms_json,
+            requested_clip_count=payload.requested_clip_count,
+            user_instructions=payload.user_instructions,
+            narration_enabled=payload.narration_enabled,
+            broll_enabled=payload.broll_enabled,
+            style_preset=creative["caption_style"],
+        )
+    )
+
+    stored_path = StorageService().save_upload(job.id, file)
+    job.input_video_url = stored_path
+    job.status = "uploaded"
+    job.current_step = "uploaded"
+    job.progress_percent = 5
+    db.add(
+        Asset(
+            job_id=job.id,
+            clip_id=None,
+            asset_type="source_video",
+            provider="local_storage",
+            prompt=None,
+            url=stored_path,
+            metadata_json={"filename": file.filename, "content_type": file.content_type},
+        )
+    )
+    db.add(
+        Asset(
+            job_id=job.id,
+            clip_id=None,
+            asset_type="ultimate_clips_plan",
+            provider="llm_intelligence_service",
+            prompt=payload.user_instructions,
+            url=f"ultimate://{job.id}",
+            metadata_json=creative,
+        )
+    )
+    db.commit()
+    db.refresh(job)
+
+    updated = JobOrchestratorService(db).process(job, render_selected_immediately=True, regenerate_transcript=False)
+    return UltimateClipsResponse(
+        job_id=updated.id,
+        status=updated.status,
+        current_step=updated.current_step,
+        progress_percent=updated.progress_percent,
+        llm_model=creative["llm_model"],
+        selected_style=creative["caption_style"],
+    )

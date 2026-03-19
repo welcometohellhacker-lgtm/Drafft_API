@@ -271,3 +271,31 @@ curl http://127.0.0.1:8000/v1/style-presets
 ```bash
 curl http://127.0.0.1:8000/v1/health
 ```
+
+
+## Ultimate_CLIPS
+
+`Ultimate_CLIPS` is a one-shot automated flow that takes a video upload and runs the whole pipeline automatically.
+
+What it does:
+- uploads the video
+- uses a `CHATGPT-5.4` planning seam to choose caption style, colors, animation pack, and transition direction
+- runs transcript, clip detection, caption planning, B-roll planning, narration, render metadata, and output enrichment
+- returns a completed job with outputs ready to inspect
+
+Browser test page:
+- open `http://127.0.0.1:8000/test-console`
+
+API endpoint:
+- `POST /v1/ultimate-clips`
+
+### Ultimate_CLIPS example
+```bash
+curl -X POST http://127.0.0.1:8000/v1/ultimate-clips \
+  -F "project_id=PROJECT_ID" \
+  -F "requested_clip_count=3" \
+  -F "user_instructions=Make this fully automatic with the best caption style, colors, CTA, and animation choices." \
+  -F "narration_enabled=true" \
+  -F "broll_enabled=true" \
+  -F "file=@./sample.mp4"
+```
