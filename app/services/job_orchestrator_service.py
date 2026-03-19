@@ -22,51 +22,85 @@ class JobOrchestratorService:
         self.visual_plan_service = VisualPlanService()
         self.render_service = RenderService()
 
-    def process(self, job: Job, render_selected_immediately: bool = False) -> Job:
+    def process(self, job: Job, render_selected_immediately: bool = False, regenerate_transcript: bool = False) -> Job:
         job.status = JobStatus.preprocessing.value
         job.current_step = "preprocess_media"
         job.progress_percent = 10
         self.db.commit()
 
-        if job.input_video_url:
-            probe = self.media_probe_service.probe(job.input_video_url)
-            job.duration_seconds = int(probe["duration_seconds"])
-            job.fps = int(probe["fps"])
-            job.width = int(probe["width"])
-            job.height = int(probe["height"])
+        if not job.input_video_url:
+            job.status = JobStatus.failed.value
+            job.current_step = "preprocess_media"
+            job.failure_reason = "input video must be uploaded before processing"
+            self.db.commit()
+            self.db.refresh(job)
+            return job
+
+        probe = self.media_probe_service.probe(job.input_video_url)
+        job.duration_seconds = int(probe["duration_seconds"])
+        job.fps = int(probe["fps"])
+        job.width = int(probe["width"])
+        job.height = int(probe["height"])
 
         job.status = JobStatus.transcribing.value
         job.current_step = "transcribe"
         job.progress_percent = 30
         self.db.commit()
 
-        transcript = self.transcription_service.transcribe(job)
-        for segment_payload in transcript:
-            segment = TranscriptSegment(
-                job_id=job.id,
-                speaker=segment_payload.get("speaker"),
-                start_time=segment_payload["start_time"],
-                end_time=segment_payload["end_time"],
-                text=segment_payload["text"],
-                confidence=segment_payload.get("confidence"),
-            )
-            self.db.add(segment)
-            self.db.flush()
-            for word in segment_payload.get("words", []):
-                self.db.add(
-                    TranscriptWord(
-                        segment_id=segment.id,
-                        word=word["word"],
-                        start_time=word["start_time"],
-                        end_time=word["end_time"],
-                        confidence=word.get("confidence"),
-                    )
+        existing_segments = self.db.query(TranscriptSegment).filter(TranscriptSegment.job_id == job.id).all()
+        if regenerate_transcript and existing_segments:
+            for segment in existing_segments:
+                for word in list(segment.words):
+                    self.db.delete(word)
+                self.db.delete(segment)
+            self.db.commit()
+            existing_segments = []
+
+        if existing_segments:
+            transcript = [
+                {
+                    "speaker": segment.speaker,
+                    "start_time": segment.start_time,
+                    "end_time": segment.end_time,
+                    "text": segment.text,
+                    "confidence": segment.confidence,
+                    "words": [],
+                }
+                for segment in existing_segments
+            ]
+        else:
+            transcript = self.transcription_service.transcribe(job)
+            for segment_payload in transcript:
+                segment = TranscriptSegment(
+                    job_id=job.id,
+                    speaker=segment_payload.get("speaker"),
+                    start_time=segment_payload["start_time"],
+                    end_time=segment_payload["end_time"],
+                    text=segment_payload["text"],
+                    confidence=segment_payload.get("confidence"),
                 )
-        self.db.commit()
+                self.db.add(segment)
+                self.db.flush()
+                for word in segment_payload.get("words", []):
+                    self.db.add(
+                        TranscriptWord(
+                            segment_id=segment.id,
+                            word=word["word"],
+                            start_time=word["start_time"],
+                            end_time=word["end_time"],
+                            confidence=word.get("confidence"),
+                        )
+                    )
+            self.db.commit()
 
         job.status = JobStatus.analyzing.value
         job.current_step = "analyze_transcript"
         job.progress_percent = 55
+        self.db.commit()
+
+        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type == "visual_plan").delete()
+        self.db.query(Render).filter(Render.job_id == job.id).delete()
+        self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id).delete()
         self.db.commit()
 
         candidates = self.transcript_intelligence_service.generate_candidates(job, transcript)

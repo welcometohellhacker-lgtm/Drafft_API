@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.repositories.job_repository import JobRepository
 from app.repositories.project_repository import ProjectRepository
+from app.schemas.clip_selection import ClipSelectionRequest
 from app.schemas.job import (
     ClipCandidateResponse,
     JobCreate,
@@ -63,7 +64,11 @@ def process_job(job_id: str, payload: JobProcessRequest, db: Session = Depends(g
     job = repo.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    updated = JobOrchestratorService(db).process(job, render_selected_immediately=payload.render_selected_immediately)
+    updated = JobOrchestratorService(db).process(
+        job,
+        render_selected_immediately=payload.render_selected_immediately,
+        regenerate_transcript=payload.regenerate_transcript,
+    )
     return JobResponse.model_validate(updated)
 
 
@@ -86,14 +91,14 @@ def get_clip_candidates(job_id: str, db: Session = Depends(get_db)) -> list[Clip
 
 
 @router.post("/{job_id}/clips/select", status_code=status.HTTP_200_OK)
-def select_clips(job_id: str, clip_ids: list[str], db: Session = Depends(get_db)) -> dict:
+def select_clips(job_id: str, payload: ClipSelectionRequest, db: Session = Depends(get_db)) -> dict:
     repo = JobRepository(db)
     if not repo.get(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     clips = repo.clip_candidates(job_id)
     selected = 0
     for clip in clips:
-        clip.selected = clip.id in clip_ids
+        clip.selected = clip.id in payload.clip_ids
         if clip.selected:
             selected += 1
     db.commit()
@@ -106,7 +111,7 @@ def render_job(job_id: str, db: Session = Depends(get_db)) -> dict:
     job = repo.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    updated = JobOrchestratorService(db).process(job, render_selected_immediately=True)
+    updated = JobOrchestratorService(db).process(job, render_selected_immediately=True, regenerate_transcript=False)
     return {"job_id": updated.id, "status": updated.status, "current_step": updated.current_step}
 
 
