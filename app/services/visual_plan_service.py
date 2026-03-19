@@ -16,11 +16,23 @@ class VisualPlanService:
                 {"type": "fade_in", "start": 0.0, "duration_ms": 400},
                 {"type": "fade_out", "start": 13.2, "duration_ms": 400},
             ],
+            "effects_timeline": [
+                {"type": "contrast_boost", "start": 0.0, "end": 13.5, "intensity": 0.07},
+                {"type": "saturation_boost", "start": 0.0, "end": 13.5, "intensity": 0.12},
+                {"type": "sharpen", "start": 0.0, "end": 13.5, "intensity": 0.7},
+            ],
             "zoom_events": [{"start": 1.0, "end": 3.0, "type": "punch_in"}],
             "cut_points": [2.0, 6.0, 10.0],
             "thumbnail_text_options": [
                 "The mortgage mistake everyone makes",
                 "Do this before you lock your rate",
             ],
-            "render_notes": {"style": style, "fade_in_ms": 400, "fade_out_ms": 400, "cta_enabled": True},
+            "render_notes": {
+                "style": style,
+                "fade_in_ms": 400,
+                "fade_out_ms": 400,
+                "cta_enabled": True,
+                "caption_margin_bottom_px": 200,
+                "music_profile": "elevenlabs_theme_matched_hype",
+            },
         }

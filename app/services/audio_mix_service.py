@@ -1,5 +1,11 @@
 class AudioMixService:
-    def build_mix_plan(self, clip_id: str, narration_enabled: bool, isolated_voice_enabled: bool) -> dict:
+    def build_mix_plan(
+        self,
+        clip_id: str,
+        narration_enabled: bool,
+        isolated_voice_enabled: bool,
+        music_theme: str | None = None,
+    ) -> dict:
         return {
             "clip_id": clip_id,
             "speech_track": "isolated_voice" if isolated_voice_enabled else "original_audio",
@@ -9,6 +15,8 @@ class AudioMixService:
                 "duck_under_speech_db": -14,
                 "fade_in_ms": 250,
                 "fade_out_ms": 400,
+                "source": "elevenlabs_music_bed",
+                "theme": music_theme or "motivational_finance_hype",
             },
             "normalization": {
                 "target_lufs": -14,

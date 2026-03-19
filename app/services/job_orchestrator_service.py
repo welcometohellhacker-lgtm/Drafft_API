@@ -78,7 +78,7 @@ class JobOrchestratorService:
 
         self.db.query(Asset).filter(
             Asset.job_id == job.id,
-            Asset.asset_type.in_(["transcript_json", "subtitle_srt", "subtitle_vtt", "isolated_voice", "narration_audio", "narration_script"]),
+            Asset.asset_type.in_(["transcript_json", "subtitle_srt", "subtitle_vtt", "isolated_voice", "narration_audio", "narration_script", "music_bed"]),
         ).delete(synchronize_session=False)
         self.db.commit()
 
@@ -196,11 +196,26 @@ class JobOrchestratorService:
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="broll_plan", provider="broll_service", prompt=None, url=f"broll-plan://{clip.id}", metadata_json=broll_plan))
             narration_script = self.narration_service.build_script(clip.title, clip.hook, clip.cta_text)
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="narration_script", provider="narration_service", prompt=None, url=f"narration-script://{clip.id}", metadata_json={"script": narration_script}))
-            audio_mix_plan = self.audio_mix_service.build_mix_plan(clip.id, job.narration_enabled, job.narration_enabled)
+            music_theme = f"{clip.topic_label} {clip.caption_style} hype"
+            audio_mix_plan = self.audio_mix_service.build_mix_plan(
+                clip.id,
+                job.narration_enabled,
+                job.narration_enabled,
+                music_theme=music_theme,
+            )
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="audio_mix_plan", provider="audio_mix_service", prompt=None, url=f"audio-mix://{clip.id}", metadata_json=audio_mix_plan))
             narration_asset = self.elevenlabs_service.generate_narration(job.id, clip.id, narration_script, job.narration_enabled)
             if narration_asset:
                 self.db.add(Asset(job_id=job.id, clip_id=clip.id, **narration_asset))
+            music_asset = self.elevenlabs_service.generate_music_bed(
+                job.id,
+                clip.id,
+                theme=clip.topic_label,
+                style_hint=clip.caption_style,
+                enabled=job.narration_enabled,
+            )
+            if music_asset:
+                self.db.add(Asset(job_id=job.id, clip_id=clip.id, **music_asset))
             generated_images = self.image_generation_service.generate_for_broll(job.id, clip.id, broll_plan, job.broll_enabled)
             for generated_image in generated_images:
                 self.db.add(Asset(job_id=job.id, clip_id=clip.id, **generated_image))
@@ -216,6 +231,16 @@ class JobOrchestratorService:
             job.progress_percent = 80
             self.db.commit()
             for clip in created_clips:
+                caption_plan_asset = (
+                    self.db.query(Asset)
+                    .filter(
+                        Asset.job_id == job.id,
+                        Asset.clip_id == clip.id,
+                        Asset.asset_type == "caption_plan",
+                    )
+                    .first()
+                )
+                caption_groups = (caption_plan_asset.metadata_json or {}).get("groups", []) if caption_plan_asset else []
                 render_meta = self.render_service.create_render_metadata(clip.id, job.requested_platforms_json[0] if job.requested_platforms_json else "9:16")
                 render_output = self.render_service.build_render_output(
                     job.id,
@@ -225,6 +250,10 @@ class JobOrchestratorService:
                     source_path=job.input_video_url,
                     start_time=clip.start_time,
                     end_time=clip.end_time,
+                    caption_groups=caption_groups,
+                    clip_start_time=clip.start_time,
+                    cta_text=clip.cta_text,
+                    brand_profile=brand_profile,
                 )
                 self.db.add(
                     Render(

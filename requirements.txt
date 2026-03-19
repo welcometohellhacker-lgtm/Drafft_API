@@ -11,3 +11,4 @@ structlog==25.4.0
 httpx==0.28.1
 orjson==3.11.2
 pytest==8.4.1
+openai-whisper==20250625

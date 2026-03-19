@@ -1,22 +1,45 @@
 class CaptionPlanService:
+    # Words per caption card by style
+    _CHUNK_SIZES = {
+        "kinetic_bold": 3,
+        "viral_pop": 3,
+        "strong_cta": 4,
+        "finance_clean": 5,
+        "premium_minimal": 6,
+    }
+
     def build_caption_groups(self, transcript_segments: list[dict], caption_style: str) -> list[dict]:
+        chunk_size = self._CHUNK_SIZES.get(caption_style, 4)
         groups: list[dict] = []
+
         for segment in transcript_segments:
             words = segment["text"].split()
-            chunk_size = 4 if caption_style in {"kinetic_bold", "viral_pop", "strong_cta"} else 6
-            total_duration = max(segment["end_time"] - segment["start_time"], 0.1)
-            step = total_duration / max((len(words) + chunk_size - 1) // chunk_size, 1)
-            for index in range(0, len(words), chunk_size):
-                chunk_words = words[index:index + chunk_size]
-                start = segment["start_time"] + (index // chunk_size) * step
-                end = min(segment["end_time"], start + step)
-                groups.append(
-                    {
-                        "text": " ".join(chunk_words),
-                        "start_time": round(start, 3),
-                        "end_time": round(end, 3),
-                        "style": caption_style,
-                        "highlight": chunk_words[0] if chunk_words else None,
-                    }
-                )
+            if not words:
+                continue
+            seg_duration = max(segment["end_time"] - segment["start_time"], 0.1)
+            secs_per_word = seg_duration / len(words)
+
+            for idx in range(0, len(words), chunk_size):
+                chunk = words[idx : idx + chunk_size]
+                word_start = idx * secs_per_word
+                word_end = min((idx + len(chunk)) * secs_per_word, seg_duration)
+                abs_start = round(segment["start_time"] + word_start, 3)
+                abs_end = round(segment["start_time"] + word_end, 3)
+                # Guarantee minimum display time
+                if abs_end - abs_start < 0.3:
+                    abs_end = abs_start + 0.3
+
+                # Uppercase for impact styles
+                text = " ".join(chunk)
+                if caption_style in ("kinetic_bold", "viral_pop"):
+                    text = text.upper()
+
+                groups.append({
+                    "text": text,
+                    "start_time": abs_start,
+                    "end_time": abs_end,
+                    "style": caption_style,
+                    "highlight": chunk[0] if chunk else None,
+                })
+
         return groups
