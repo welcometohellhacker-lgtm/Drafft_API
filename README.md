@@ -14,6 +14,7 @@ Final target: **Version 5**.
 - Preprocess media metadata
 - Generate transcript data through a provider abstraction
 - Analyze transcript and return clip candidates as structured JSON
+- Persist upload, transcript, visual-plan, and clip-candidate artifacts
 
 ### Version 2 — Captions + Simple Rendering
 - Subtitle generation (SRT/VTT later)
@@ -152,3 +153,9 @@ docker compose up --build
 4. Add presigned upload flow + S3 storage backend
 5. Add auth, tenancy, and project-level permissions
 6. Add provider-specific ElevenLabs and image generation integrations
+
+## Branching Strategy
+- `V1` through `V5` are milestone branches
+- finished features are committed incrementally on the active milestone branch
+- completed milestones are merged upward progressively
+- see `docs/VERSIONING.md` for the release flow
