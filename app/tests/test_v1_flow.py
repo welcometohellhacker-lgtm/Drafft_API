@@ -243,3 +243,28 @@ def test_v5_status_endpoint_returns_timeline() -> None:
     status_response = client.get(f"/v1/jobs/{job_id}/status")
     assert status_response.status_code == 200
     assert len(status_response.json()["timeline"]) >= 3
+
+
+def test_v5_branding_profile_propagates_to_visual_plan() -> None:
+    project = client.post(
+        "/v1/projects",
+        json={
+            "name": "Brand Project",
+            "default_style_preset": "finance_clean",
+            "brand_settings_json": {"primary_color": "#123456", "font_family": "Manrope"},
+        },
+    )
+    project_id = project.json()["id"]
+    job = client.post(
+        "/v1/jobs",
+        json={"project_id": project_id, "requested_platforms_json": ["9:16"], "requested_clip_count": 1, "style_preset": "strong_cta"},
+    )
+    job_id = job.json()["id"]
+    client.post(f"/v1/jobs/{job_id}/upload", files={"file": ("sample.mp4", io.BytesIO(b"fake-video"), "video/mp4")})
+    client.post(f"/v1/jobs/{job_id}/process", json={"regenerate_transcript": False, "render_selected_immediately": False})
+    outputs = client.get(f"/v1/jobs/{job_id}/outputs")
+    assets = outputs.json()["outputs"][0]["assets"]
+    branding = next(asset for asset in assets if asset["asset_type"] == "branding_profile")
+    assert branding["metadata_json"]["brand_settings"]["primary_color"] == "#123456"
+    visual_plan = next(asset for asset in assets if asset["asset_type"] == "visual_plan")
+    assert visual_plan["metadata_json"]["branding"]["style_preset"] == "strong_cta"

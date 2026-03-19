@@ -8,6 +8,7 @@ from app.models.render import Render
 from app.models.transcript import TranscriptSegment, TranscriptWord
 from app.services.audio_mix_service import AudioMixService
 from app.services.broll_service import BrollService
+from app.services.branding_service import BrandingService
 from app.services.caption_plan_service import CaptionPlanService
 from app.services.elevenlabs_service import ElevenLabsService
 from app.services.image_generation_service import ImageGenerationService
@@ -24,6 +25,7 @@ class JobOrchestratorService:
     def __init__(self, db: Session):
         self.db = db
         self.audio_mix_service = AudioMixService()
+        self.branding_service = BrandingService()
         self.broll_service = BrollService()
         self.elevenlabs_service = ElevenLabsService()
         self.caption_plan_service = CaptionPlanService()
@@ -157,9 +159,13 @@ class JobOrchestratorService:
         job.progress_percent = 55
         self.db.commit()
 
-        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(["visual_plan", "caption_plan", "clip_candidate_json", "broll_plan", "audio_mix_plan", "generated_image", "rendered_clip", "thumbnail"])).delete(synchronize_session=False)
+        self.db.query(Asset).filter(Asset.job_id == job.id, Asset.asset_type.in_(["visual_plan", "caption_plan", "clip_candidate_json", "broll_plan", "audio_mix_plan", "branding_profile", "generated_image", "rendered_clip", "thumbnail"])).delete(synchronize_session=False)
         self.db.query(Render).filter(Render.job_id == job.id).delete(synchronize_session=False)
         self.db.query(ClipCandidate).filter(ClipCandidate.job_id == job.id).delete(synchronize_session=False)
+        self.db.commit()
+
+        brand_profile = self.branding_service.build_brand_profile(job.project, job.style_preset)
+        self.db.add(Asset(job_id=job.id, clip_id=None, asset_type="branding_profile", provider="branding_service", prompt=None, url=f"branding://{job.project_id}", metadata_json=brand_profile))
         self.db.commit()
 
         selected_clip_ids = {
@@ -194,6 +200,7 @@ class JobOrchestratorService:
             generated_images = self.image_generation_service.generate_for_broll(job.id, clip.id, broll_plan, job.broll_enabled)
             for generated_image in generated_images:
                 self.db.add(Asset(job_id=job.id, clip_id=clip.id, **generated_image))
+            visual_plan["branding"] = brand_profile
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="visual_plan", provider="internal", prompt=None, url=f"visual-plan://{clip.id}", metadata_json=visual_plan))
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="clip_candidate_json", provider="transcript_intelligence_service", prompt=None, url=f"clip-candidate://{clip.id}", metadata_json=candidate_payload))
         self.db.commit()
