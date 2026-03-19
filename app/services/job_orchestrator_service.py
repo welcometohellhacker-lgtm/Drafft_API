@@ -198,6 +198,7 @@ class JobOrchestratorService:
                 style=clip.caption_style,
                 broll_prompts=clip.broll_prompts_json,
                 cta_text=clip.cta_text,
+                clip_duration=max(0.1, clip.end_time - clip.start_time),
             )
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="caption_plan", provider="caption_plan_service", prompt=None, url=f"caption-plan://{clip.id}", metadata_json=caption_plan))
             self.db.add(Asset(job_id=job.id, clip_id=clip.id, asset_type="broll_plan", provider="broll_service", prompt=None, url=f"broll-plan://{clip.id}", metadata_json=broll_plan))
