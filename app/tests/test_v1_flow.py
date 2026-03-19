@@ -97,6 +97,7 @@ def test_v1_end_to_end_flow() -> None:
     assert "subtitle_srt" in asset_types
     assert "subtitle_vtt" in asset_types
     assert "caption_plan" in asset_types
+    assert "broll_plan" in asset_types
     assert "clip_candidate_json" in asset_types
 
 
