@@ -14,33 +14,36 @@ Final target: **Version 5**.
 - Preprocess media metadata
 - Generate transcript data through a provider abstraction
 - Analyze transcript and return clip candidates as structured JSON
+- Persist upload, transcript, visual-plan, and clip-candidate artifacts
 
 ### Version 2 — Captions + Simple Rendering
-- Subtitle generation (SRT/VTT later)
-- Caption grouping and presets
-- Simple clip extraction
-- Burned-in caption render pipeline
+- Subtitle generation artifacts (SRT/VTT)
+- Clip-level caption grouping metadata
+- Simple rendered output workflow for 9:16 clips
+- Burned-in caption render metadata
+- Render listing endpoint
 
 ### Version 3 — B-roll + Visual Planning
-- B-roll prompt generation
-- Visual plan JSON
-- CTA overlays
+- Dedicated B-roll planning artifacts with insertion windows
+- Expanded visual plan JSON with overlays, cuts, and CTA metadata
+- Generated image asset flow for B-roll stills
 - Thumbnail text ideas
 
 ### Version 4 — Audio Enhancement + Narration
 - ElevenLabs provider abstraction
-- Speech cleanup / isolation seam
-- Narration planning and audio mix seam
+- voice isolation artifacts
+- narration script and narration audio artifacts
+- audio mix planning metadata
+- speech cleanup / isolation seam
 
 ### Version 5 — Full Automated Pipeline
-- Async orchestration
+- Async-style orchestration and status polling
 - Reusable styles and branding presets
-- Render queue
-- Outputs metadata
-- Thumbnails
+- Render queue semantics and output tracking
+- Outputs metadata and thumbnails
 - Social caption suggestions
-- Webhooks
-- Retries and error handling
+- Webhook event artifacts
+- Retry/error metadata surfaces
 
 ## Tech Stack
 - FastAPI
@@ -152,3 +155,9 @@ docker compose up --build
 4. Add presigned upload flow + S3 storage backend
 5. Add auth, tenancy, and project-level permissions
 6. Add provider-specific ElevenLabs and image generation integrations
+
+## Branching Strategy
+- `V1` through `V5` are milestone branches
+- finished features are committed incrementally on the active milestone branch
+- completed milestones are merged upward progressively
+- see `docs/VERSIONING.md` for the release flow

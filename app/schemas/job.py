@@ -65,3 +65,13 @@ class TranscriptSegmentResponse(BaseModel):
 class JobOutputsResponse(BaseModel):
     job_id: str
     outputs: list[dict]
+
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    current_step: str
+    progress_percent: int
+    failure_reason: str | None = None
+    retryable: bool
+    timeline: list[dict]
