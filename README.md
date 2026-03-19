@@ -17,10 +17,11 @@ Final target: **Version 5**.
 - Persist upload, transcript, visual-plan, and clip-candidate artifacts
 
 ### Version 2 — Captions + Simple Rendering
-- Subtitle generation (SRT/VTT later)
-- Caption grouping and presets
-- Simple clip extraction
-- Burned-in caption render pipeline
+- Subtitle generation artifacts (SRT/VTT)
+- Clip-level caption grouping metadata
+- Simple rendered output workflow for 9:16 clips
+- Burned-in caption render metadata
+- Render listing endpoint
 
 ### Version 3 — B-roll + Visual Planning
 - B-roll prompt generation
