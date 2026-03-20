@@ -1,0 +1,53 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "project_id", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "user_id", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "clip_candidates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "job_id", "order": "ASCENDING"},
+        {"fieldPath": "selected", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "assets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "job_id", "order": "ASCENDING"},
+        {"fieldPath": "asset_type", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "transcript_segments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "job_id", "order": "ASCENDING"},
+        {"fieldPath": "start_time", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "transcript_words",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "segment_id", "order": "ASCENDING"},
+        {"fieldPath": "start_time", "order": "ASCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

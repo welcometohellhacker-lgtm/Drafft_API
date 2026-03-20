@@ -1,15 +1,9 @@
-from pathlib import Path
+from app.services.video_preprocessing_service import VideoPreprocessingService
 
 
 class MediaProbeService:
+    def __init__(self) -> None:
+        self._pre = VideoPreprocessingService()
+
     def probe(self, file_path: str) -> dict:
-        suffix = Path(file_path).suffix.lower()
-        return {
-            "duration_seconds": 60,
-            "fps": 30,
-            "width": 1080,
-            "height": 1920,
-            "audio_presence": True,
-            "file_size": Path(file_path).stat().st_size if Path(file_path).exists() else 0,
-            "format": suffix.lstrip("."),
-        }
+        return self._pre.probe(file_path)

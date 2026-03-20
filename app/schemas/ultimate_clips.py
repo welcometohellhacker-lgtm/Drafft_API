@@ -1,9 +1,12 @@
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from fastapi import Query
+from pydantic import BaseModel
 
 
 class UltimateClipsRequest(BaseModel):
     project_id: str
-    requested_platforms_json: list[str] = Field(default_factory=lambda: ["9:16"])
+    requested_platforms_json: Annotated[list[str], Query()] = ["9:16"]
     requested_clip_count: int = 3
     user_instructions: str | None = None
     narration_enabled: bool = True

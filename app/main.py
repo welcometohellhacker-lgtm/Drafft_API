@@ -7,13 +7,13 @@ from fastapi.staticfiles import StaticFiles
 from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.db.init_db import init_db
+from app.db.firebase import init_firebase
 
 configure_logging()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    init_db()
+    init_firebase()
     yield
 
 

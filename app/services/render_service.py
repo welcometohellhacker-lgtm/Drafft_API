@@ -20,12 +20,14 @@ class RenderService:
         }
 
     def render_clip(self, job_id: str, clip_id: str, props: dict) -> dict:
-        clip_dir = self.storage.clip_dir(job_id, clip_id)
+        clip_dir = self.storage.clip_dir(job_id, clip_id).resolve()
         props_path = clip_dir / 'input-props.json'
         out_path = clip_dir / 'output.mp4'
         thumb_path = clip_dir / 'thumbnail.png'
         self.storage.write_json_asset(props_path, props)
-        result = self.remotion.render('VerticalClip', str(props_path), str(out_path), str(thumb_path))
+        clip_duration = float(props.get('clipDurationSec') or 30)
+        timeout = max(300, int(clip_duration * 10))  # 10s per clip-second, minimum 5 min
+        result = self.remotion.render('VerticalClip', str(props_path), str(out_path), str(thumb_path), timeout_seconds=timeout)
         return {
             'output_url': self.storage.public_url_for(out_path),
             'subtitle_url': self.storage.public_url_for(self.storage.subtitles_dir(job_id) / 'job.srt'),

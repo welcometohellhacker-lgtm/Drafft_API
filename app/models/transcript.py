@@ -1,31 +1,83 @@
-from sqlalchemy import Float, ForeignKey, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from __future__ import annotations
 
-from app.db.base import Base
-from app.models.common import UUIDPrimaryKeyMixin
-
-
-class TranscriptSegment(UUIDPrimaryKeyMixin, Base):
-    __tablename__ = "transcript_segments"
-
-    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False, index=True)
-    speaker: Mapped[str | None] = mapped_column(String(100))
-    start_time: Mapped[float] = mapped_column(Float, nullable=False)
-    end_time: Mapped[float] = mapped_column(Float, nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    confidence: Mapped[float | None] = mapped_column(Float)
-
-    job = relationship("Job", back_populates="transcript_segments")
-    words = relationship("TranscriptWord", back_populates="segment")
+from dataclasses import dataclass, field
+from typing import ClassVar
+from uuid import uuid4
 
 
-class TranscriptWord(UUIDPrimaryKeyMixin, Base):
-    __tablename__ = "transcript_words"
+def _uuid() -> str:
+    return str(uuid4())
 
-    segment_id: Mapped[str] = mapped_column(ForeignKey("transcript_segments.id"), nullable=False, index=True)
-    word: Mapped[str] = mapped_column(String(255), nullable=False)
-    start_time: Mapped[float] = mapped_column(Float, nullable=False)
-    end_time: Mapped[float] = mapped_column(Float, nullable=False)
-    confidence: Mapped[float | None] = mapped_column(Float)
 
-    segment = relationship("TranscriptSegment", back_populates="words")
+@dataclass
+class TranscriptSegment:
+    __tablename__: ClassVar[str] = "transcript_segments"
+
+    job_id: str
+    start_time: float
+    end_time: float
+    text: str
+    id: str = field(default_factory=_uuid)
+    speaker: str | None = None
+    confidence: float | None = None
+    # populated when needed (e.g. regenerate_transcript delete path)
+    words: list = field(default_factory=list, repr=False)
+
+    def _to_firestore(self) -> dict:
+        return {
+            "job_id": self.job_id,
+            "speaker": self.speaker,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "text": self.text,
+            "confidence": self.confidence,
+        }
+
+    @classmethod
+    def _from_firestore(cls, doc_id: str, data: dict) -> "TranscriptSegment":
+        return cls(
+            id=doc_id,
+            job_id=data.get("job_id", ""),
+            speaker=data.get("speaker"),
+            start_time=float(data.get("start_time", 0)),
+            end_time=float(data.get("end_time", 0)),
+            text=data.get("text", ""),
+            confidence=data.get("confidence"),
+        )
+
+    def _update_from_firestore(self, data: dict) -> None:
+        updated = self._from_firestore(self.id, data)
+        for attr in ("job_id", "speaker", "start_time", "end_time", "text", "confidence"):
+            setattr(self, attr, getattr(updated, attr))
+
+
+@dataclass
+class TranscriptWord:
+    __tablename__: ClassVar[str] = "transcript_words"
+
+    segment_id: str
+    word: str
+    start_time: float
+    end_time: float
+    id: str = field(default_factory=_uuid)
+    confidence: float | None = None
+
+    def _to_firestore(self) -> dict:
+        return {
+            "segment_id": self.segment_id,
+            "word": self.word,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "confidence": self.confidence,
+        }
+
+    @classmethod
+    def _from_firestore(cls, doc_id: str, data: dict) -> "TranscriptWord":
+        return cls(
+            id=doc_id,
+            segment_id=data.get("segment_id", ""),
+            word=data.get("word", ""),
+            start_time=float(data.get("start_time", 0)),
+            end_time=float(data.get("end_time", 0)),
+            confidence=data.get("confidence"),
+        )

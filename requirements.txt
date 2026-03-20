@@ -2,12 +2,9 @@ fastapi==0.116.1
 uvicorn[standard]==0.35.0
 pydantic==2.11.7
 pydantic-settings==2.10.1
-sqlalchemy==2.0.43
-alembic==1.16.4
-psycopg[binary]==3.2.9
-redis==6.4.0
 python-multipart==0.0.20
 structlog==25.4.0
 httpx==0.28.1
 orjson==3.11.2
 pytest==8.4.1
+firebase-admin==6.5.0

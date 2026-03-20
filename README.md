@@ -1,323 +1,335 @@
-# Drafft_API
+# Drafft API
 
-Drafft is a production-oriented, API-first SaaS backend for AI-powered video optimization in mortgage, insurance, and financial services.
+Drafft is a production-oriented, API-first SaaS backend for AI-powered video optimization. It accepts long-form videos and turns them into short-form viral clips with captions, background music, and 9:16 vertical rendering via a modular pipeline powered by Whisper, FFmpeg, and Remotion.
 
-It accepts long-form videos and turns them into short-form clip candidates, caption plans, visual plans, optional AI assets, and render-ready outputs through a modular pipeline.
+---
 
-## Product Scope
+## EC2 Deployment Guide
 
-Final target: **Version 5**.
+### Architecture Overview
 
-### Version 1 — Core Intelligence MVP
-- Create jobs
-- Upload videos
-- Preprocess media metadata
-- Generate transcript data through a provider abstraction
-- Analyze transcript and return clip candidates as structured JSON
-- Persist upload, transcript, visual-plan, and clip-candidate artifacts
-
-### Version 2 — Captions + Simple Rendering
-- Subtitle generation artifacts (SRT/VTT)
-- Clip-level caption grouping metadata
-- Simple rendered output workflow for 9:16 clips
-- Burned-in caption render metadata
-- Render listing endpoint
-
-### Version 3 — B-roll + Visual Planning
-- Dedicated B-roll planning artifacts with insertion windows
-- Expanded visual plan JSON with overlays, cuts, and CTA metadata
-- Generated image asset flow for B-roll stills
-- Thumbnail text ideas
-
-### Version 4 — Audio Enhancement + Narration
-- ElevenLabs provider abstraction
-- voice isolation artifacts
-- narration script and narration audio artifacts
-- audio mix planning metadata
-- speech cleanup / isolation seam
-
-### Version 5 — Full Automated Pipeline
-- Async-style orchestration and status polling
-- Reusable styles and branding presets
-- Render queue semantics and output tracking
-- Outputs metadata and thumbnails
-- Social caption suggestions
-- Webhook event artifacts
-- Retry/error metadata surfaces
-
-## Tech Stack
-- FastAPI
-- Pydantic v2
-- SQLAlchemy 2
-- Alembic
-- PostgreSQL-ready schema
-- Redis-ready worker seam
-- FFmpeg-ready processing seam
-- Docker / docker-compose
-
-## Current State
-This repo ships a production-shaped backend scaffold with:
-- `/v1` REST API
-- typed schemas
-- SQLAlchemy models
-- initial Alembic migration
-- modular services
-- local storage abstraction
-- mock orchestration for internal testing
-- Docker support
-- `.env.example`
-- basic test
-
-## API Endpoints
-
-### Jobs
-- `POST /v1/jobs`
-- `GET /v1/jobs`
-- `GET /v1/jobs/{job_id}`
-- `POST /v1/jobs/{job_id}/upload`
-- `POST /v1/jobs/{job_id}/process`
-- `GET /v1/jobs/{job_id}/transcript`
-- `GET /v1/jobs/{job_id}/clips/candidates`
-- `POST /v1/jobs/{job_id}/clips/select`
-- `POST /v1/jobs/{job_id}/render`
-- `GET /v1/jobs/{job_id}/outputs`
-
-### Projects
-- `POST /v1/projects`
-- `GET /v1/projects`
-- `GET /v1/projects/{project_id}`
-- `GET /v1/projects/{project_id}/jobs`
-
-### Platform helpers
-- `GET /v1/health`
-- `GET /v1/style-presets`
-- `POST /v1/assets/generate-image`
-- `POST /v1/assets/generate-voice`
-- `POST /v1/webhooks/test`
-
-## Run Locally
-
-### 1. Environment
-```bash
-cp .env.example .env
+```
+Internet
+    │
+    ▼
+Nginx (port 80/443)  ← SSL via Let's Encrypt
+    │
+    ▼
+Uvicorn (port 8000, local only)
+    │
+    ├── FastAPI routes  → Firebase Auth token verification
+    ├── Firestore       → projects, jobs, assets, renders, clips (per-user)
+    ├── Local storage   → /srv/drafft/storage/  (video files, renders)
+    ├── Whisper         → audio transcription (CPU)
+    ├── FFmpeg          → video processing / vertical conversion
+    └── Remotion CLI    → Node.js video rendering (Chromium headless)
 ```
 
-### 2. Install
+---
+
+### 1. Launch an EC2 Instance
+
+**Recommended specs:**
+
+| Setting | Value |
+|---------|-------|
+| AMI | Ubuntu 22.04 LTS |
+| Instance type | `t3.xlarge` (4 vCPU, 16 GB RAM) minimum |
+| Storage | 100 GB gp3 SSD |
+| Security group | Inbound: SSH (22), HTTP (80), HTTPS (443) |
+
+---
+
+### 2. Connect and Install System Dependencies
+
 ```bash
-python3 -m venv .venv
+ssh -i your-key.pem ubuntu@<ec2-public-ip>
+
+sudo apt-get update && sudo apt-get upgrade -y
+
+sudo apt-get install -y \
+  python3.12 python3.12-venv python3-pip \
+  ffmpeg curl git build-essential \
+  nginx certbot python3-certbot-nginx
+```
+
+---
+
+### 3. Install Node.js (required for Remotion)
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node --version   # should be v20.x
+```
+
+---
+
+### 4. Clone and Set Up the Application
+
+```bash
+sudo mkdir -p /srv/drafft && sudo chown ubuntu:ubuntu /srv/drafft
+cd /srv/drafft
+
+git clone <your-repo-url> api
+cd api
+
+python3.12 -m venv .venv
 source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
+pip install openai-whisper       # not in requirements.txt (large install)
+
+# Install Remotion dependencies
+cd remotion_renderer && npm install && cd ..
+
+# Create local storage directory
+mkdir -p /srv/drafft/storage
 ```
 
-### 3. Run migrations
+---
+
+### 5. Firebase Setup
+
+#### 5a. Enable Firestore in your Firebase project
+
+1. [console.firebase.google.com](https://console.firebase.google.com) → your project
+2. **Firestore Database** → Create database → **Native mode** → choose region
+3. **Authentication** → ensure Email/Google/etc. providers are enabled (for your frontend)
+
+#### 5b. Generate a service account key
+
+1. Project Settings → **Service accounts** → **Generate new private key**
+2. Download `serviceAccountKey.json`
+3. Upload to EC2:
+
 ```bash
-alembic upgrade head
+# From your local machine:
+scp -i your-key.pem serviceAccountKey.json ubuntu@<ec2-ip>:/srv/drafft/api/
+chmod 600 /srv/drafft/api/serviceAccountKey.json
 ```
 
-### 4. Start API
+#### 5c. Deploy Firestore composite indexes
+
 ```bash
-uvicorn app.main:app --reload
+npm install -g firebase-tools
+firebase login --no-localhost    # follow the URL prompt
+
+cd /srv/drafft/api
+firebase deploy --only firestore:indexes --project <your-firebase-project-id>
 ```
 
-### 5. Run tests
+---
+
+### 6. Configure Environment Variables
+
 ```bash
-pytest
+nano /srv/drafft/api/.env
 ```
 
-## Docker
-```bash
-docker compose up --build
+```env
+APP_NAME=Drafft API
+APP_ENV=production
+APP_HOST=0.0.0.0
+APP_PORT=8000
+LOG_LEVEL=INFO
+
+# Storage (local filesystem on the EC2 instance)
+STORAGE_BACKEND=local
+LOCAL_STORAGE_PATH=/srv/drafft/storage
+
+# Firebase
+FIREBASE_PROJECT_ID=your-firebase-project-id
+GOOGLE_APPLICATION_CREDENTIALS=/srv/drafft/api/serviceAccountKey.json
+ENABLE_AUTH=true
+
+# AI providers
+ENABLE_MOCK_PROVIDERS=false
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=openai/gpt-4o
+ELEVENLABS_API_KEY=sk_...
+
+DEFAULT_STYLE_PRESET=finance_clean
+WEBHOOK_TIMEOUT_SECONDS=10
 ```
 
-## Architecture Notes
+> Set `ENABLE_AUTH=false` only for local development or CLI testing. In production
+> every request must carry a valid Firebase ID token.
 
-### Service modules
-- `storage_service`
-- `media_probe_service`
-- `transcription_service`
-- `transcript_intelligence_service`
-- `caption_service`
-- `visual_plan_service`
-- `render_service`
-- `webhook_service`
-- `job_orchestrator_service`
+---
 
-### Important design decisions
-- provider seams are abstracted so transcription, LLM, image generation, and voice services can be swapped later
-- orchestration is intentionally lightweight now, but structured to move cleanly to Celery, Temporal, or Inngest later
-- visual plan JSON is stored as an asset artifact to stabilize the planning → rendering contract early
-- render pipeline is currently a placeholder seam, not a full media renderer yet
-
-## Recommended Next Steps
-1. Replace mock transcription with Whisper/OpenAI abstraction
-2. Add Celery or Temporal-backed async execution
-3. Implement FFmpeg clip cutting + subtitle exports
-4. Add presigned upload flow + S3 storage backend
-5. Add auth, tenancy, and project-level permissions
-6. Add provider-specific ElevenLabs and image generation integrations
-
-## Branching Strategy
-- `V1` through `V5` are milestone branches
-- finished features are committed incrementally on the active milestone branch
-- completed milestones are merged upward progressively
-- see `docs/VERSIONING.md` for the release flow
-
-## Example Commands To Test
-
-Start the API first:
+### 7. Test the App
 
 ```bash
-uvicorn app.main:app --reload
+cd /srv/drafft/api
+source .venv/bin/activate
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level info
 ```
 
-### 1. Create a project
+Open `http://<ec2-public-ip>:8000/docs`. Stop with `Ctrl+C`.
+
+---
+
+### 8. Systemd Service
+
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/projects \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Drafft Demo Project",
-    "description": "Internal mortgage demo",
-    "default_style_preset": "finance_clean",
-    "brand_settings_json": {
-      "primary_color": "#123456",
-      "font_family": "Inter",
-      "cta_preset": "finance_clean_cta"
+sudo nano /etc/systemd/system/drafft-api.service
+```
+
+```ini
+[Unit]
+Description=Drafft API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/srv/drafft/api
+Environment="PATH=/srv/drafft/api/.venv/bin:/usr/bin:/bin"
+ExecStart=/srv/drafft/api/.venv/bin/uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --workers 1 \
+    --log-level info \
+    --timeout-keep-alive 300
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> `--workers 1` is intentional — Whisper + Remotion together use ~8–12 GB RAM.
+> Multiple workers would OOM a standard instance.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable drafft-api
+sudo systemctl start drafft-api
+sudo systemctl status drafft-api
+
+# Live logs:
+sudo journalctl -u drafft-api -f
+```
+
+---
+
+### 9. Nginx Reverse Proxy
+
+```bash
+sudo nano /etc/nginx/sites-available/drafft-api
+```
+
+```nginx
+server {
+    listen 80;
+    server_name api.yourdomain.com;
+
+    # Large video uploads
+    client_max_body_size 2G;
+    client_body_timeout 600s;
+    proxy_read_timeout 1200s;
+    proxy_send_timeout 1200s;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
     }
-  }'
-```
 
-### 2. Create a job
-Replace `PROJECT_ID` with the project id returned above.
+    # Serve rendered files directly (bypass Python)
+    location /storage/ {
+        alias /srv/drafft/storage/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+}
+```
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/jobs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": "PROJECT_ID",
-    "requested_platforms_json": ["9:16"],
-    "requested_clip_count": 2,
-    "user_instructions": "Focus on mortgage mistakes and strong CTA moments.",
-    "narration_enabled": true,
-    "broll_enabled": true,
-    "style_preset": "strong_cta"
-  }'
+sudo ln -s /etc/nginx/sites-available/drafft-api /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl restart nginx
 ```
 
-### 3. Upload a video
-Replace `JOB_ID` and file path.
+---
+
+### 10. SSL (HTTPS)
+
+> Requires a domain name with an A record pointing to the EC2 IP.
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/upload \
-  -F "file=@./sample.mp4"
+sudo certbot --nginx -d api.yourdomain.com
+sudo certbot renew --dry-run   # verify auto-renewal
 ```
 
-### 4. Process the job
+---
+
+### 11. Frontend Integration
+
+Set your API base URL to `https://api.yourdomain.com/v1`.
+
+All requests must include the Firebase ID token:
+
+```js
+const token = await firebase.auth().currentUser.getIdToken();
+
+const res = await fetch('https://api.yourdomain.com/v1/projects', {
+  headers: { Authorization: `Bearer ${token}` },
+});
+```
+
+For real-time job status updates (no polling needed), subscribe directly in Firestore:
+
+```js
+import { doc, onSnapshot } from 'firebase/firestore';
+
+onSnapshot(doc(db, 'jobs', jobId), (snap) => {
+  const { status, progress_percent, current_step } = snap.data();
+  // update UI progress bar in real time
+});
+```
+
+---
+
+### 12. Updating the App
+
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/process \
-  -H "Content-Type: application/json" \
-  -d '{
-    "regenerate_transcript": false,
-    "render_selected_immediately": false
-  }'
+cd /srv/drafft/api
+git pull
+source .venv/bin/activate
+pip install -r requirements.txt          # only if changed
+cd remotion_renderer && npm install && cd ..  # only if package.json changed
+sudo systemctl restart drafft-api
 ```
 
-### 5. Poll job status
-```bash
-curl http://127.0.0.1:8000/v1/jobs/JOB_ID/status
+---
+
+### 13. Firestore Collections
+
+```
+projects/{project_id}     — name, brand settings, user_id
+jobs/{job_id}             — status, progress, video urls, settings
+clip_candidates/{id}      — title, hook, score, timing, selected
+assets/{id}               — any generated/stored file (video, audio, plan)
+renders/{id}              — output_url, thumbnail_url, status
+transcript_segments/{id}  — text, start_time, end_time
+transcript_words/{id}     — word, start_time, end_time
 ```
 
-### 6. Read transcript
-```bash
-curl http://127.0.0.1:8000/v1/jobs/JOB_ID/transcript
-```
+---
 
-### 7. Read clip candidates
-```bash
-curl http://127.0.0.1:8000/v1/jobs/JOB_ID/clips/candidates
-```
+### Troubleshooting
 
-### 8. Select one or more clips
-Replace `CLIP_ID_1` with ids returned from the candidates endpoint.
-
-```bash
-curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/clips/select \
-  -H "Content-Type: application/json" \
-  -d '{
-    "clip_ids": ["CLIP_ID_1"]
-  }'
-```
-
-### 9. Trigger render flow
-```bash
-curl -X POST http://127.0.0.1:8000/v1/jobs/JOB_ID/render
-```
-
-### 10. Read outputs
-```bash
-curl http://127.0.0.1:8000/v1/jobs/JOB_ID/outputs
-```
-
-### 11. Read render records
-```bash
-curl http://127.0.0.1:8000/v1/renders/JOB_ID
-```
-
-### 12. Inspect style presets
-```bash
-curl http://127.0.0.1:8000/v1/style-presets
-```
-
-### 13. Health check
-```bash
-curl http://127.0.0.1:8000/v1/health
-```
-
-
-## Ultimate_CLIPS
-
-`Ultimate_CLIPS` is a one-shot automated flow that takes a video upload and runs the whole pipeline automatically.
-
-What it does:
-- uploads the video
-- uses real OpenRouter integration when `OPENROUTER_API_KEY` is set, with a safe fallback planner otherwise
-- runs transcript, clip detection, caption planning, B-roll planning, narration, render metadata, and output enrichment
-- returns a completed job with outputs ready to inspect
-
-Browser test page:
-- open `http://127.0.0.1:8000/test-console`
-
-API endpoint:
-- `POST /v1/ultimate-clips`
-
-### Ultimate_CLIPS example
-```bash
-curl -X POST http://127.0.0.1:8000/v1/ultimate-clips \
-  -F "project_id=PROJECT_ID" \
-  -F "requested_clip_count=3" \
-  -F "user_instructions=Make this fully automatic with the best caption style, colors, CTA, and animation choices." \
-  -F "narration_enabled=true" \
-  -F "broll_enabled=true" \
-  -F "file=@./sample.mp4"
-```
-
-
-## Remotion_Test branch
-
-This branch preserves the same FastAPI API surface, but swaps the placeholder render flow for a Remotion CLI-backed renderer.
-
-What changed on this branch:
-- `/v1/jobs/{job_id}/process` focuses on planning/pipeline assets
-- `/v1/jobs/{job_id}/render` consumes saved plans and selected clips
-- rendered outputs are file-backed under local storage
-- a colocated `remotion_renderer/` Node app powers animated compositions
-
-Branch runtime notes:
-- requires Node.js in addition to Python
-- requires installing dependencies inside `remotion_renderer/`
-- render output is served from `/storage/...`
-
-Basic Remotion setup:
-```bash
-cd remotion_renderer
-npm install
-```
+| Problem | Fix |
+|---------|-----|
+| `NotFoundError` on startup | Check `FIREBASE_PROJECT_ID` and that Firestore is enabled in Native mode |
+| `DefaultCredentialsError` | Verify `GOOGLE_APPLICATION_CREDENTIALS` path is correct |
+| `401 Invalid token` | Frontend must send `Authorization: Bearer <idToken>`, not the UID |
+| `FAILED_PRECONDITION: indexes not ready` | Run `firebase deploy --only firestore:indexes` and wait ~2 min |
+| Large upload fails (413) | Ensure `client_max_body_size 2G` in Nginx config |
+| Out of memory | Upgrade to `t3.xlarge` (16 GB) or higher |
+| Render timeout | Increase `proxy_read_timeout` in Nginx (pipeline can take 15–20 min) |

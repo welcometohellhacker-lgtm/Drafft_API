@@ -35,6 +35,15 @@
     .kpi .label { color:var(--muted); font-size:12px; }
     .kpi .value { font-size:22px; font-weight:700; margin-top:4px; }
     @media (max-width: 1000px){ .span-4,.span-6,.span-8,.span-12 { grid-column: span 12; } }
+    .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:1000; overflow-y:auto; padding:32px 16px; }
+    .modal-bg.open { display:block; }
+    .modal { max-width:1200px; margin:0 auto; }
+    .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .modal-close { background:#1e3050; border:1px solid var(--line); color:var(--text); width:auto; padding:8px 18px; border-radius:10px; cursor:pointer; font-size:14px; margin:0; }
+    .video-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:20px; }
+    .video-card { background:#0b1526; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+    .video-card video { width:100%; display:block; background:#000; }
+    .video-card .clip-body { padding:12px; }
   </style>
 </head>
 <body>
@@ -96,7 +105,10 @@
     </div>
 
     <div class="card span-8">
-      <h2>Inline Clip Gallery</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h2 style="margin:0;">Inline Clip Gallery</h2>
+        <button onclick="openVideoModal()" style="width:auto;margin:0;padding:8px 18px;font-size:13px;">View All Videos</button>
+      </div>
       <div id="gallery" class="gallery"></div>
     </div>
 
@@ -107,16 +119,60 @@
   </div>
 </div>
 
+<!-- View All Videos Modal -->
+<div class="modal-bg" id="videoModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 style="margin:0;">All Rendered Videos</h2>
+      <button class="modal-close" onclick="closeVideoModal()">✕ Close</button>
+    </div>
+    <div class="video-grid" id="videoGrid">
+      <div class="meta">No videos yet. Run Ultimate_CLIPS or render a job first.</div>
+    </div>
+  </div>
+</div>
+
 <script>
   const output = document.getElementById('output');
   const gallery = document.getElementById('gallery');
   const show = (data) => output.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  let _allClips = [];
+
+  function openVideoModal() {
+    const grid = document.getElementById('videoGrid');
+    if (!_allClips.length) {
+      grid.innerHTML = '<div class="meta" style="padding:16px;">No videos yet. Run Ultimate_CLIPS or render a job first.</div>';
+    } else {
+      grid.innerHTML = _allClips.map(item => `
+        <div class="video-card">
+          <video controls preload="metadata" src="${item.download_url}"></video>
+          <div class="clip-body">
+            <div class="score">CTO Score: ${item.cto_score ?? '—'}</div>
+            <div class="meta" style="margin-top:6px;">${item.social_caption || ''}</div>
+            <div class="downloads meta" style="margin-top:6px;"><a href="${item.download_url}" download>⬇ Download</a></div>
+          </div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('videoModal').classList.add('open');
+  }
+
+  function closeVideoModal() {
+    document.getElementById('videoModal').classList.remove('open');
+    document.querySelectorAll('#videoGrid video').forEach(v => v.pause());
+  }
+
+  document.getElementById('videoModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('videoModal')) closeVideoModal();
+  });
+
   const setKPIs = ({ jobId='—', style='—', score='—' } = {}) => {
     document.getElementById('kpiJob').textContent = jobId;
     document.getElementById('kpiStyle').textContent = style;
     document.getElementById('kpiScore').textContent = score;
   };
   const renderGallery = (items=[]) => {
+    if (items.length) _allClips = items;
     gallery.innerHTML = items.length ? items.map(item => `
       <div class="clip">
         <img class="thumb" src="${item.thumbnail_url || 'https://placehold.co/320x568/png?text=Drafft'}" alt="thumbnail" />

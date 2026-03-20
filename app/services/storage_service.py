@@ -8,7 +8,7 @@ from app.core.config import settings
 
 class StorageService:
     def __init__(self) -> None:
-        self.base_path = Path(settings.local_storage_path)
+        self.base_path = Path(settings.local_storage_path).resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
 
     def job_dir(self, job_id: str) -> Path:

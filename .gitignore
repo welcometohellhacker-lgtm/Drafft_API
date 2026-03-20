@@ -20,3 +20,10 @@ storage/
 .DS_Store
 .idea/
 .vscode/
+
+# Remotion (large Chromium + node dependencies should never be pushed)
+remotion_renderer/node_modules/
+remotion_renderer/.remotion/
+
+# Claude scratch space
+.claude/

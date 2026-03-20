@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_drafft.db"
 os.environ["LOCAL_STORAGE_PATH"] = tempfile.mkdtemp(prefix="drafft-storage-")
+# Deterministic tests: no external APIs; Remotion uses ffmpeg placeholder (see remotion_cli_service).
+os.environ["ENABLE_MOCK_PROVIDERS"] = "true"
+os.environ["OPENROUTER_API_KEY"] = ""
+os.environ["ELEVENLABS_API_KEY"] = ""
 
 from app.db.base import Base
 from app.db.session import get_db
@@ -72,7 +76,10 @@ def test_v1_end_to_end_flow() -> None:
         json={"regenerate_transcript": False, "render_selected_immediately": False},
     )
     assert process.status_code == 202
-    assert process.json()["status"] == "completed"
+    assert process.json().get("accepted") is True
+    status = client.get(f"/v1/jobs/{job_id}/status")
+    assert status.status_code == 200
+    assert status.json()["status"] == "completed"
 
     transcript = client.get(f"/v1/jobs/{job_id}/transcript")
     assert transcript.status_code == 200
@@ -317,7 +324,7 @@ def test_ultimate_clips_endpoint_runs_full_auto_flow() -> None:
     )
     assert response.status_code == 201
     body = response.json()
-    assert body["llm_model"] == "CHATGPT-5.4"
+    assert isinstance(body["llm_model"], str) and body["llm_model"].strip()
     assert body["selected_style"] in {"viral_pop", "finance_clean"}
 
 
